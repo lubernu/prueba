@@ -434,7 +434,7 @@ with tab_registro:
             with col3:
                 datos_guardar["valor_plan"] = st.number_input("Valor Mensual ($)", min_value=0.0, key=f"vplan_{fk}")
                 
-    elif tipo_venta in ["Claro fijo", "DTH"]:
+    elif tipo_venta in ["Hogar"]:
         with st.container(border=True):
             st.subheader("5. SERVICIOS FIJOS")
             col1, col2, col3 = st.columns(3)

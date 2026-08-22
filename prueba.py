@@ -16,6 +16,15 @@ def validar_campo_numerico(valor_ingresado, longitud_esperada):
         return True, ""
     return False, ""
 
+def validar_formato_correo(correo):
+    """Valida el formato del correo electrónico: texto@texto.xx"""
+    if not correo:
+        return True, ""
+    patron = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$"
+    if re.match(patron, correo.strip()):
+        return True, ""
+    return False, "Formato inválido. Ej: nombre@dominio.com"
+
 def cargar_asesores():
     """Carga el archivo CSV de asesores y retorna un diccionario {cedula: nombre}"""
     try:
@@ -24,7 +33,9 @@ def cargar_asesores():
         if not os.path.exists(ruta_csv):
             return None, f"⚠️ No se encontró el archivo: {ruta_csv}"
         
-        df = pd.read_csv(ruta_csv, dtype=str)
+        # sep=None + engine="python": detecta automáticamente el separador
+        # (funciona con comas, tabulaciones o punto y coma)
+        df = pd.read_csv(ruta_csv, dtype=str, sep=None, engine="python")
         # Normalizar nombres de columnos (quitar espacios, pasar a minúsculas)
         df.columns = df.columns.str.strip().str.lower()
         
@@ -36,6 +47,11 @@ def cargar_asesores():
                 col_cedula = col
             if "nombre" in col or "asesor" in col or "vendedor" in col or "completo" in col:
                 col_nombre = col
+                
+        # Protección: si ambas coincidencias cayeron en la misma columna,
+        # el separador no fue reconocido correctamente
+        if col_cedula == col_nombre or len(df.columns) < 2:
+            return None, f"⚠️ No se pudo separar las columnas del CSV. Verifique que 'cedula' y 'nombre' estén separados por coma. Columnas detectadas: {list(df.columns)}"
                 
         if col_cedula is None or col_nombre is None:
             return None, f"⚠️ El CSV debe tener columnas de 'cedula' y 'nombre'. Columnas encontradas: {list(df.columns)}"
@@ -182,10 +198,21 @@ if "pdv_seleccionado" not in st.session_state:
 
 # ================= DATOS DE EJEMPLO (PDVs) =================
 pdv_disponibles = {
-    "Pdv1": "Punto de Venta 1 - Centro",
-    "Pdv2": "Punto de Venta 2 - Norte",
-    "Pdv3": "Punto de Venta 3 - Sur",
-    "Pdv4": "Punto de Venta 4 - Occidente"
+    "Pdv1": "ARCABUCO",
+    "Pdv2": "COOSERVICIOS",
+    "Pdv3": "GACHANTIVA",
+    "Pdv4": "GARAGOA",
+    "Pdv5":"MIRAFLORES",
+    "Pdv6":"MUISCAS",
+    "Pdv7":"NOBSA",
+    "Pdv8":"OTANCHE",
+    "Pdv9":"PRINCIPAL",
+    "Pdv10":"SAMACA",
+    "Pdv11":"TIBANA",
+    "Pdv12":"TOCA",
+    "Pdv13":"TUTA",
+    "Pdv14":"VILLA DE LEYVA"
+    
 }
 
 # ================= PANTALLA 1: LOGIN =================
@@ -332,7 +359,11 @@ with tab_registro:
             datos_guardar["direccion"] = st.text_input("Dirección de Residencia", key=f"dir_{fk}")
             datos_guardar["cliente_convergente"] = st.selectbox("¿Es Cliente Convergente?", ["Sí", "No"], key=f"conv_{fk}")
         with col3:
-            datos_guardar["correo"] = st.text_input("Correo Electrónico", key=f"correo_{fk}")
+            datos_guardar["correo"] = st.text_input("Correo Electrónico", key=f"correo_{fk}", placeholder="Ej: nombre@dominio.com")
+            if datos_guardar["correo"]:
+                es_valido, msg_error = validar_formato_correo(datos_guardar["correo"])
+                if not es_valido:
+                    st.error(f"**Correo Electrónico:** {msg_error}")
             datos_guardar["servicios_adicionales"] = st.text_input("Servicios Adicionales Ofrecidos", key=f"serv_ad_{fk}")
             datos_guardar["observaciones"] = st.text_area("Observaciones", height=68, key=f"obs_{fk}")
             
@@ -352,27 +383,45 @@ with tab_registro:
         "valor_equipo_claro", "valor_descuento", "valor_equipo", 
         "valor_pagado_cliente", "financiado", "financiera", "valor_credito",
         "plan", "tipo_plan", "valor_plan",
-        "ciudad", "indicaciones", "estrato", "campana", "servicios", "renta", "instalacion", "cuenta",
+        "ciudad", "indicaciones", "estrato", "campana", "servicios", "renta", "instalacion", "cuenta", "acceso"
         "tramite", "paquete_bienvenida"
     ]
     for campo in campos_opcionales:
         datos_guardar[campo] = None
         
     # --- SECCIÓN 3: DETALLES DEL EQUIPO (Se quitó "Sim card" de esta lista) ---
-    if tipo_venta in ["Kit Contado", "Kit a Cuotas", "Reposicion a Cuotas", "Reposicion cargo a la factura", "Reposicion pago Inmediato"]:
+    if tipo_venta in ["Kit Contado", "Kit a Cuotas", "Reposicion a Cuotas", "Reposicion cargo a la factura", "Reposicion pago Inmediato","Tecnologia"]:
         with st.container(border=True):
             st.subheader("3. DETALLES DEL EQUIPO")
             col1, col2, col3 = st.columns(3)
             with col1:
                 datos_guardar["referencia"] = st.text_input("Referencia del Equipo", key=f"ref_{fk}")
             with col2:
-                datos_guardar["imei"] = st.text_input("IMEI", key=f"imei_{fk}")
+                datos_guardar["imei"] = st.text_input(
+                    "IMEI", 
+                    key=f"imei_{fk}", 
+                    max_chars=15, 
+                    placeholder="Ej: 356938035643809 (15 dígitos)"
+                )
+                if datos_guardar["imei"]:
+                    es_valido, msg_error = validar_campo_numerico(datos_guardar["imei"], 15)
+                    if msg_error:
+                        st.error(f"**IMEI:** {msg_error}")
             with col3:
                 datos_guardar["iccid"] = st.text_input("ICCID", key=f"iccid_{fk}")
             st.markdown("<br>", unsafe_allow_html=True)
             col4, col5, col6 = st.columns(3)
             with col4:
-                datos_guardar["min"] = st.text_input("MIN", key=f"min_{fk}")
+                datos_guardar["min"] = st.text_input(
+                    "MIN", 
+                    key=f"min_{fk}", 
+                    max_chars=10, 
+                    placeholder="Ej: 3001234567 (10 dígitos)"
+                )
+                if datos_guardar["min"]:
+                    es_valido, msg_error = validar_campo_numerico(datos_guardar["min"], 10)
+                    if msg_error:
+                        st.error(f"**MIN:** {msg_error}")
             with col5:
                 datos_guardar["valor_equipo_claro"] = st.number_input("Valor del Equipo Claro ($)", min_value=0, step=1000, key=f"veq_claro_{fk}")
             with col6:
@@ -445,10 +494,11 @@ with tab_registro:
             with col2:
                 datos_guardar["indicaciones"] = st.text_area("Indicaciones (Cómo llegar)", height=68, key=f"ind_{fk}")
                 datos_guardar["instalacion"] = st.number_input("Costo Instalación ($)", min_value=0, key=f"inst_{fk}")
-            with col3:
                 datos_guardar["campana"] = st.text_input("Campaña Asociada", key=f"camp_{fk}")
+            with col3:                
                 datos_guardar["servicios"] = st.text_input("Servicios Contratados", key=f"serv_fijo_{fk}")
                 datos_guardar["cuenta"] = st.text_input("Número de Cuenta", key=f"cta_{fk}")
+                datos_guardar["acceso"] = st.selectbox("Acceso", ["SI", "NO"], key=f"acc_{fk}")
                 
     # --- SECCIÓN 6: REFERIDOS ---
     with st.container(border=True):
@@ -502,6 +552,41 @@ with tab_historial:
         venta for venta in st.session_state.historial_temporal 
         if venta.get("cedula_vendedor") == st.session_state.usuario_logueado
     ]
+    
+    # ================= RESUMEN DEL MES ACTUAL POR TIPO DE TRANSACCIÓN =================
+    hoy = datetime.date.today()
+    st.markdown("---")
+    st.subheader(f"📊 Resumen de Ventas - {hoy.strftime('%B %Y').capitalize()}")
+    tipos_del_mes = [
+        venta.get("tipo_venta") for venta in datos_historial
+        if isinstance(venta.get("fecha_venta"), datetime.date)
+        and venta["fecha_venta"].year == hoy.year
+        and venta["fecha_venta"].month == hoy.month
+        and venta.get("tipo_venta")
+    ]
+    
+    if tipos_del_mes:
+        df_resumen = (
+            pd.DataFrame({"Tipo de Transacción": tipos_del_mes})
+            .groupby("Tipo de Transacción")
+            .size()
+            .reset_index(name="Ventas del Mes")
+            .sort_values("Ventas del Mes", ascending=False, ignore_index=True)
+        )
+        total_mes = int(df_resumen["Ventas del Mes"].sum())
+        fila_total = pd.DataFrame(
+            [{"Tipo de Transacción": "TOTAL", "Ventas del Mes": total_mes}]
+        )
+        df_resumen = pd.concat([df_resumen, fila_total], ignore_index=True)
+        
+        col_res1, col_res2 = st.columns([3, 1])
+        with col_res1:
+            st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+        with col_res2:
+            st.metric(label="Total Ventas del Mes", value=total_mes)
+    else:
+        st.info("📭 Aún no tiene ventas registradas en el mes actual.")
+    st.markdown("---")
     
     if not datos_historial:
         st.info("📭 No tiene ventas registradas aún. Vaya a la pestaña 'Registrar Nueva Venta' para comenzar.")

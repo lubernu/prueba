@@ -74,18 +74,21 @@ def cargar_asesores():
 def obtener_cliente_supabase():
     """Crea el cliente de Supabase con credenciales de .streamlit/secrets.toml o variables de entorno."""
     try:
-        url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["key"]
+        claves_detectadas = list(st.secrets.keys())
+    except Exception:
+        claves_detectadas = []
+    try:
+        url = str(st.secrets["supabase"].get("url", "") or "")
+        key = str(st.secrets["supabase"].get("key", "") or "")
     except Exception:
         url = os.getenv("SUPABASE_URL", "")
         key = os.getenv("SUPABASE_KEY", "")
     if not url or not key:
-        return None
+        return None, f"sin credenciales. Secciones detectadas en secrets: {claves_detectadas}"
     try:
-        return create_client(url, key)
+        return create_client(url, key), None
     except Exception as e:
-        st.error(f"❌ No se pudo conectar a Supabase: {e}")
-        return None
+        return None, f"error al crear el cliente: {e}"
 
 def guardar_venta_supabase(cliente, datos):
     """Inserta la venta en la tabla 'ventas' y retorna (exito, resultado)."""
@@ -238,7 +241,7 @@ hr {
 
 # ================= CARGAR ASESORES Y CONEXIÓN =================
 dict_asesores, error_csv = cargar_asesores()
-supabase = obtener_cliente_supabase()
+supabase, motivo_supabase = obtener_cliente_supabase()
 
 # ================= ESTADO DE LA SESIÓN =================
 if "form_key" not in st.session_state:
@@ -368,7 +371,8 @@ st.markdown("<hr>", unsafe_allow_html=True)
 if supabase is None:
     st.warning(
         "⚠️ **Supabase no configurado.** Edite `.streamlit/secrets.toml` con la URL y la anon key de su proyecto. "
-        "Las ventas se guardarán solo en memoria y se perderán al cerrar la app."
+        "Las ventas se guardarán solo en memoria y se perderán al cerrar la app.\n\n"
+        f"Motivo: `{motivo_supabase}`"
     )
 
 # ================= ESTRUCTURA DE PESTAÑAS =================

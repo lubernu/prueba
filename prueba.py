@@ -3,6 +3,9 @@ import streamlit as st
 import datetime
 import pandas as pd
 import os
+from supabase import create_client
+
+TABLA_VENTAS = "ventas"
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def validar_campo_numerico(valor_ingresado, longitud_esperada):
@@ -65,6 +68,58 @@ def cargar_asesores():
         return dict_asesores, None
     except Exception as e:
         return None, f"⚠️ Error al leer el archivo CSV: {str(e)}"
+
+# ================= CONEXIÓN A SUPABASE =================
+@st.cache_resource
+def obtener_cliente_supabase():
+    """Crea el cliente de Supabase con credenciales de .streamlit/secrets.toml o variables de entorno."""
+    try:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+    except Exception:
+        url = os.getenv("SUPABASE_URL", "")
+        key = os.getenv("SUPABASE_KEY", "")
+    if not url or not key:
+        return None
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        st.error(f"❌ No se pudo conectar a Supabase: {e}")
+        return None
+
+def guardar_venta_supabase(cliente, datos):
+    """Inserta la venta en la tabla 'ventas' y retorna (exito, resultado)."""
+    try:
+        registro = dict(datos)
+        fv = registro.get("fecha_venta")
+        if isinstance(fv, datetime.date):
+            registro["fecha_venta"] = fv.isoformat()
+        respuesta = cliente.table(TABLA_VENTAS).insert(registro).execute()
+        return True, respuesta.data
+    except Exception as e:
+        return False, str(e)
+
+def cargar_historial_supabase(cliente, cedula):
+    """Descarga las ventas del vendedor desde Supabase y retorna (lista, error)."""
+    try:
+        respuesta = (
+            cliente.table(TABLA_VENTAS)
+            .select("*")
+            .eq("cedula_vendedor", str(cedula))
+            .order("created_at", desc=True)
+            .execute()
+        )
+        ventas = respuesta.data or []
+        for venta in ventas:
+            fv = venta.get("fecha_venta")
+            if isinstance(fv, str):
+                try:
+                    venta["fecha_venta"] = datetime.date.fromisoformat(fv[:10])
+                except ValueError:
+                    pass
+        return ventas, None
+    except Exception as e:
+        return [], str(e)
 
 # ================= CONFIGURACIÓN DE PÁGINA =================
 st.set_page_config(page_title="Gestión de Ventas", layout="wide", page_icon="🔴")
@@ -181,8 +236,9 @@ hr {
 </style>
 """, unsafe_allow_html=True)
 
-# ================= CARGAR ASESORES DESDE CSV =================
+# ================= CARGAR ASESORES Y CONEXIÓN =================
 dict_asesores, error_csv = cargar_asesores()
+supabase = obtener_cliente_supabase()
 
 # ================= ESTADO DE LA SESIÓN =================
 if "form_key" not in st.session_state:
@@ -198,20 +254,20 @@ if "pdv_seleccionado" not in st.session_state:
 
 # ================= DATOS DE EJEMPLO (PDVs) =================
 pdv_disponibles = {
-    "Pdv1": "ARCABUCO",
-    "Pdv2": "COOSERVICIOS",
-    "Pdv3": "GACHANTIVA",
-    "Pdv4": "GARAGOA",
-    "Pdv5":"MIRAFLORES",
-    "Pdv6":"MUISCAS",
-    "Pdv7":"NOBSA",
-    "Pdv8":"OTANCHE",
-    "Pdv9":"PRINCIPAL",
-    "Pdv10":"SAMACA",
-    "Pdv11":"TIBANA",
-    "Pdv12":"TOCA",
-    "Pdv13":"TUTA",
-    "Pdv14":"VILLA DE LEYVA"
+    "ARCA": "ARCABUCO",
+    "COOS": "COOSERVICIOS",
+    "GACH": "GACHANTIVA",
+    "GARA": "GARAGOA",
+    "MIRA":"MIRAFLORES",
+    "MUIS":"MUISCAS",
+    "NOBS":"NOBSA",
+    "OTAN":"OTANCHE",
+    "PRIN":"PRINCIPAL",
+    "SAMA":"SAMACA",
+    "TIBA":"TIBANA",
+    "TOCA":"TOCA",
+    "TUTA":"TUTA",
+    "VILL":"VILLA DE LEYVA"
     
 }
 
@@ -309,6 +365,12 @@ with col_info3:
 
 st.markdown("<hr>", unsafe_allow_html=True)
 
+if supabase is None:
+    st.warning(
+        "⚠️ **Supabase no configurado.** Edite `.streamlit/secrets.toml` con la URL y la anon key de su proyecto. "
+        "Las ventas se guardarán solo en memoria y se perderán al cerrar la app."
+    )
+
 # ================= ESTRUCTURA DE PESTAÑAS =================
 st.title("📋 Portal de Gestión Comercial")
 tab_registro, tab_historial = st.tabs(["📝 Registrar Nueva Venta", "📜 Historial de Operaciones"])
@@ -383,7 +445,7 @@ with tab_registro:
         "valor_equipo_claro", "valor_descuento", "valor_equipo", 
         "valor_pagado_cliente", "financiado", "financiera", "valor_credito",
         "plan", "tipo_plan", "valor_plan",
-        "ciudad", "indicaciones", "estrato", "campana", "servicios", "renta", "instalacion", "cuenta", "acceso"
+        "ciudad", "indicaciones", "estrato", "campana", "servicios", "renta", "instalacion", "cuenta", "acceso",
         "tramite", "paquete_bienvenida"
     ]
     for campo in campos_opcionales:
@@ -443,7 +505,7 @@ with tab_registro:
                 st.markdown("#### 💳 Datos de Financiación")
                 col_fin1, col_fin2 = st.columns(2)
                 with col_fin1:
-                    datos_guardar["financiera"] = st.selectbox("Entidad Financiera", ["Claro", "Addi", "Celya", "Credismart"], key=f"fin_{fk}")
+                    datos_guardar["financiera"] = st.selectbox("Entidad Financiera", ["Claro", "Addi", "Celya", "Krediya","Credismart","Vanti","Alo Credit","Payjoy"], key=f"fin_{fk}")
                 with col_fin2:
                     datos_guardar["valor_credito"] = st.number_input("Valor Crédito ($)", min_value=0, step=1000, key=f"vcredito_{fk}")
                     
@@ -523,33 +585,47 @@ with tab_registro:
             
     # --- BOTÓN DE GUARDAR ---
     st.markdown("<br>", unsafe_allow_html=True)
+
+    def registrar_venta():
+        if supabase is not None:
+            exito, resultado = guardar_venta_supabase(supabase, datos_guardar)
+            if not exito:
+                st.error(f"❌ Error al guardar en la base de datos: {resultado}")
+                return
+        else:
+            st.session_state.historial_temporal.append(datos_guardar)
+        st.success(f"✅ ¡Venta registrada exitosamente! Vendedor: {st.session_state.nombre_vendedor}")
+        st.session_state.form_key += 1
+        st.rerun()
+
     if st.button("💾 REGISTRAR VENTA", use_container_width=True, type="primary"):
         if not tipo_venta:
             st.error("⚠️ Es obligatorio seleccionar el **TIPO DE TRANSACCIÓN** (Sección 2) para guardar el registro.")
-        else:
-            if datos_guardar.get("financiado") == "SI":
-                if not datos_guardar.get("financiera"):
-                    st.error("⚠️ Si la venta es financiada, debe seleccionar la **Entidad Financiera**.")
-                elif not datos_guardar.get("valor_credito") or datos_guardar["valor_credito"] <= 0:
-                    st.error("⚠️ Si la venta es financiada, debe ingresar el **Valor del Crédito**.")
-                else:
-                    st.session_state.historial_temporal.append(datos_guardar)
-                    st.success(f"✅ ¡Venta registrada exitosamente! Vendedor: {st.session_state.nombre_vendedor}")
-                    st.session_state.form_key += 1
-                    st.rerun()
+        elif datos_guardar.get("financiado") == "SI":
+            if not datos_guardar.get("financiera"):
+                st.error("⚠️ Si la venta es financiada, debe seleccionar la **Entidad Financiera**.")
+            elif not datos_guardar.get("valor_credito") or datos_guardar["valor_credito"] <= 0:
+                st.error("⚠️ Si la venta es financiada, debe ingresar el **Valor del Crédito**.")
             else:
-                st.session_state.historial_temporal.append(datos_guardar)
-                st.success(f"✅ ¡Venta registrada exitosamente! Vendedor: {st.session_state.nombre_vendedor}")
-                st.session_state.form_key += 1
-                st.rerun()
+                registrar_venta()
+        else:
+            registrar_venta()
 
 # ================= PESTAÑA 2: HISTORIAL =================
 with tab_historial:
     st.subheader("📜 Mi Historial de Operaciones")
     st.caption(f"Mostrando únicamente las ventas de: {st.session_state.nombre_vendedor} (CC: {st.session_state.usuario_logueado})")
     
+    if supabase is not None:
+        ventas_db, error_db = cargar_historial_supabase(supabase, st.session_state.usuario_logueado)
+        if error_db:
+            st.error(f"❌ Error al consultar el historial en Supabase: {error_db}")
+            ventas_db = []
+    else:
+        ventas_db = st.session_state.historial_temporal
+
     datos_historial = [
-        venta for venta in st.session_state.historial_temporal 
+        venta for venta in ventas_db
         if venta.get("cedula_vendedor") == st.session_state.usuario_logueado
     ]
     

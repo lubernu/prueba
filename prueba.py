@@ -6,6 +6,7 @@ import os
 from supabase import create_client
 
 TABLA_VENTAS = "ventas"
+CEDULAS_ADMIN = ["94458575", "1746215"]
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def validar_campo_numerico(valor_ingresado, longitud_esperada):
@@ -105,13 +106,10 @@ def guardar_venta_supabase(cliente, datos):
 def cargar_historial_supabase(cliente, cedula):
     """Descarga las ventas del vendedor desde Supabase y retorna (lista, error)."""
     try:
-        respuesta = (
-            cliente.table(TABLA_VENTAS)
-            .select("*")
-            .eq("cedula_vendedor", str(cedula))
-            .order("created_at", desc=True)
-            .execute()
-        )
+        query = cliente.table(TABLA_VENTAS).select("*")
+        if cedula not in CEDULAS_ADMIN:
+            query = query.eq("cedula_vendedor", str(cedula))
+        respuesta = query.order("created_at", desc=True).execute()
         ventas = respuesta.data or []
         for venta in ventas:
             fv = venta.get("fecha_venta")
@@ -474,7 +472,16 @@ with tab_registro:
                     if msg_error:
                         st.error(f"**IMEI:** {msg_error}")
             with col3:
-                datos_guardar["iccid"] = st.text_input("ICCID", key=f"iccid_{fk}")
+                datos_guardar["iccid"] = st.text_input(
+                    "ICCID",
+                    key=f"iccid_{fk}",
+                    max_chars=17,
+                    placeholder="Máximo 17 dígitos"
+                )
+                if datos_guardar["iccid"]:
+                    es_valido, msg_error = validar_campo_numerico(datos_guardar["iccid"], 17)
+                    if msg_error:
+                        st.error(f"**ICCID:** {msg_error}")
             st.markdown("<br>", unsafe_allow_html=True)
             col4, col5, col6 = st.columns(3)
             with col4:
@@ -519,7 +526,16 @@ with tab_registro:
             st.subheader("3. DETALLE SIM")
             col1, col2 = st.columns(2)
             with col1:
-                datos_guardar["iccid"] = st.text_input("ICCID", key=f"iccid_{fk}")
+                datos_guardar["iccid"] = st.text_input(
+                    "ICCID",
+                    key=f"iccid_{fk}",
+                    max_chars=17,
+                    placeholder="Máximo 17 dígitos"
+                )
+                if datos_guardar["iccid"]:
+                    es_valido, msg_error = validar_campo_numerico(datos_guardar["iccid"], 17)
+                    if msg_error:
+                        st.error(f"**ICCID:** {msg_error}")
                 datos_guardar["valor_equipo_claro"] = st.number_input(
                     "Valor del Equipo Claro ($)", 
                     min_value=0, 
@@ -618,7 +634,10 @@ with tab_registro:
 # ================= PESTAÑA 2: HISTORIAL =================
 with tab_historial:
     st.subheader("📜 Mi Historial de Operaciones")
-    st.caption(f"Mostrando únicamente las ventas de: {st.session_state.nombre_vendedor} (CC: {st.session_state.usuario_logueado})")
+    if st.session_state.usuario_logueado in CEDULAS_ADMIN:
+        st.caption("👑 Modo Administrador: Mostrando TODAS las ventas de todos los vendedores.")
+    else:
+        st.caption(f"Mostrando únicamente las ventas de: {st.session_state.nombre_vendedor} (CC: {st.session_state.usuario_logueado})")
     
     if supabase is not None:
         ventas_db, error_db = cargar_historial_supabase(supabase, st.session_state.usuario_logueado)
@@ -628,10 +647,13 @@ with tab_historial:
     else:
         ventas_db = st.session_state.historial_temporal
 
-    datos_historial = [
-        venta for venta in ventas_db
-        if venta.get("cedula_vendedor") == st.session_state.usuario_logueado
-    ]
+    if st.session_state.usuario_logueado in CEDULAS_ADMIN:
+        datos_historial = ventas_db
+    else:
+        datos_historial = [
+            venta for venta in ventas_db
+            if venta.get("cedula_vendedor") == st.session_state.usuario_logueado
+        ]
     
     # ================= RESUMEN DEL MES ACTUAL POR TIPO DE TRANSACCIÓN =================
     hoy = datetime.date.today()
@@ -659,11 +681,30 @@ with tab_historial:
         )
         df_resumen = pd.concat([df_resumen, fila_total], ignore_index=True)
         
-        col_res1, col_res2 = st.columns([3, 1])
+        col_res1, col_res2 = st.columns(2)
         with col_res1:
+            st.markdown("**Resumen por Tipo de Transacción**")
             st.dataframe(df_resumen, use_container_width=True, hide_index=True)
-        with col_res2:
             st.metric(label="Total Ventas del Mes", value=total_mes)
+        with col_res2:
+            st.markdown("**Ventas por Asesor y Tipo**")
+            ventas_mes = [
+                v for v in datos_historial
+                if isinstance(v.get("fecha_venta"), datetime.date)
+                and v["fecha_venta"].year == hoy.year
+                and v["fecha_venta"].month == hoy.month
+                and v.get("tipo_venta") and v.get("nombre_vendedor")
+            ]
+            if ventas_mes:
+                df_pivot = pd.crosstab(
+                    index=pd.Series([v["nombre_vendedor"] for v in ventas_mes]),
+                    columns=pd.Series([v["tipo_venta"] for v in ventas_mes]),
+                    margins=True,
+                    margins_name="TOTAL"
+                )
+                df_pivot.index.name = "Asesor"
+                df_pivot.columns.name = None
+                st.dataframe(df_pivot, use_container_width=True)
     else:
         st.info("📭 Aún no tiene ventas registradas en el mes actual.")
     st.markdown("---")

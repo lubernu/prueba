@@ -681,7 +681,7 @@ with tab_historial:
         )
         df_resumen = pd.concat([df_resumen, fila_total], ignore_index=True)
         
-        col_res1, col_res2 = st.columns(2)
+        col_res1, col_res2 = st.columns([4,6])
         with col_res1:
             st.markdown("**Resumen por Tipo de Transacción**")
             st.dataframe(df_resumen, use_container_width=True, hide_index=True)

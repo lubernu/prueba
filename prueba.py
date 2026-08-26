@@ -557,13 +557,43 @@ with tab_registro:
     elif tipo_venta == "Postpago":
         with st.container(border=True):
             st.subheader("4. DESCRIPCIÓN DEL PLAN")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 datos_guardar["plan"] = st.text_input("Nombre del Plan", key=f"plan_{fk}")
             with col2:
-                datos_guardar["tipo_plan"] = st.selectbox("Tipo de Plan", ["Linea Nueva", "Migración", "Portabilidad"], key=f"tplan_{fk}")                
+                datos_guardar["tipo_plan"] = st.selectbox("Tipo de Plan", ["Linea Nueva", "Migración", "Portabilidad"], key=f"tplan_{fk}")
             with col3:
                 datos_guardar["valor_plan"] = st.number_input("Valor Mensual ($)", min_value=0.0, key=f"vplan_{fk}")
+            with col4:
+                equipo_nuevo = st.selectbox("Equipo Nuevo", ["NO", "SI"], key=f"equipo_nuevo_{fk}")
+            if equipo_nuevo == "SI":
+                st.markdown("---")
+                st.markdown("#### 📱 Datos del Equipo Nuevo")
+                eq_col1, eq_col2, eq_col3 = st.columns(3)
+                with eq_col1:
+                    datos_guardar["referencia"] = st.text_input("Referencia del Equipo", key=f"ref_{fk}")
+                with eq_col2:
+                    datos_guardar["imei"] = st.text_input(
+                        "IMEI",
+                        key=f"imei_{fk}",
+                        max_chars=15,
+                        placeholder="Ej: 356938035643809 (15 dígitos)"
+                    )
+                    if datos_guardar["imei"]:
+                        es_valido, msg_error = validar_campo_numerico(datos_guardar["imei"], 15)
+                        if msg_error:
+                            st.error(f"**IMEI:** {msg_error}")
+                with eq_col3:
+                    datos_guardar["iccid"] = st.text_input(
+                        "ICCID",
+                        key=f"iccid_{fk}",
+                        max_chars=17,
+                        placeholder="Máximo 17 dígitos"
+                    )
+                    if datos_guardar["iccid"]:
+                        es_valido, msg_error = validar_campo_numerico(datos_guardar["iccid"], 17)
+                        if msg_error:
+                            st.error(f"**ICCID:** {msg_error}")
                 
     elif tipo_venta in ["Hogar"]:
         with st.container(border=True):
@@ -681,7 +711,7 @@ with tab_historial:
         )
         df_resumen = pd.concat([df_resumen, fila_total], ignore_index=True)
         
-        col_res1, col_res2 = st.columns([4,6])
+        col_res1, col_res2 = st.columns(2)
         with col_res1:
             st.markdown("**Resumen por Tipo de Transacción**")
             st.dataframe(df_resumen, use_container_width=True, hide_index=True)

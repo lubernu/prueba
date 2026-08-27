@@ -448,7 +448,7 @@ with tab_registro:
         "valor_pagado_cliente", "financiado", "financiera", "valor_credito",
         "plan", "tipo_plan", "valor_plan",
         "ciudad", "indicaciones", "estrato", "campana", "servicios", "renta", "instalacion", "cuenta", "acceso",
-        "tramite", "paquete_bienvenida"
+        "tramite", "paquete_bienvenida","claro_up","valor_claro_up"
     ]
     for campo in campos_opcionales:
         datos_guardar[campo] = None
@@ -519,6 +519,14 @@ with tab_registro:
                     datos_guardar["financiera"] = st.selectbox("Entidad Financiera", ["Claro", "Addi", "Celya", "Krediya","Credismart","Vanti","Alo Credit","Payjoy"], key=f"fin_{fk}")
                 with col_fin2:
                     datos_guardar["valor_credito"] = st.number_input("Valor Crédito ($)", min_value=0, step=1000, key=f"vcredito_{fk}")
+                    
+            if tipo_venta in ["Reposicion a Cuotas", "Reposicion cargo a la factura", "Reposicion pago Inmediato"]:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("---")
+                st.markdown("#### 🚀 Claro Up")
+                datos_guardar["claro_up"] = st.checkbox("¿Claro Up?", key=f"claro_up_{fk}")
+                if datos_guardar["claro_up"]:
+                    datos_guardar["valor_claro_up"] = st.number_input("Valor Claro Up ($)", min_value=0, step=1000, key=f"valor_claro_up_{fk}")
                     
     # --- NUEVA SECCIÓN: DETALLE SIM (Solo para Sim card) ---
     elif tipo_venta == "Sim card":

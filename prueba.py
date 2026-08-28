@@ -451,7 +451,7 @@ with tab_registro:
         "tramite", "paquete_bienvenida","claro_up","valor_claro_up"
     ]
     for campo in campos_opcionales:
-        datos_guardar[campo] = None
+        datos_guardar[campo] = False if campo == "claro_up" else None
         
     # --- SECCIÓN 3: DETALLES DEL EQUIPO (Se quitó "Sim card" de esta lista) ---
     if tipo_venta in ["Kit Contado", "Kit a Cuotas", "Reposicion a Cuotas", "Reposicion cargo a la factura", "Reposicion pago Inmediato","Tecnologia"]:

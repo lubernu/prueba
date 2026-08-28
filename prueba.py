@@ -188,6 +188,9 @@ def calcular_avance(datos_historial, hoy):
 
 
 
+# ================= CONFIGURACIÓN DE PÁGINA =================
+st.set_page_config(page_title="Gestión de Ventas", layout="wide", page_icon="🔴")
+
 # ================= CSS PERSONALIZADO =================
 st.markdown("""
 <style>

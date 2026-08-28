@@ -6,7 +6,7 @@ import os
 from supabase import create_client
 
 TABLA_VENTAS = "ventas"
-CEDULAS_ADMIN = ["94458575", "1746215"]
+CEDULAS_ADMIN = ["94458575", "1746215" , "33366639"]
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def validar_campo_numerico(valor_ingresado, longitud_esperada):

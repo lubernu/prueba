@@ -29,8 +29,22 @@ def validar_formato_correo(correo):
         return True, ""
     return False, "Formato inválido. Ej: nombre@dominio.com"
 
-def cargar_asesores():
-    """Carga el archivo CSV de asesores y retorna un diccionario {cedula: nombre}"""
+def cargar_asesores(cliente=None):
+    """Carga los asesores desde Supabase (tabla 'asesores') o, si no está conectado,
+    desde el CSV asesoresAnclu.csv. Retorna (dict {cedula: nombre}, error)."""
+    # 1) Intentar leer desde Supabase
+    if cliente is not None:
+        try:
+            respuesta = cliente.table("asesores").select("cedula,nombre").eq("activo", True).execute()
+            datos = respuesta.data or []
+            if datos:
+                dict_asesores = {str(r["cedula"]).strip(): str(r["nombre"]).strip() for r in datos}
+                return dict_asesores, None
+        except Exception as e:
+            # Si la tabla no existe o falla, caemos al CSV
+            motivo = str(e)
+
+    # 2) Fallback al CSV
     try:
         # Buscar el archivo en el mismo directorio del script
         ruta_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "asesoresAnclu.csv")
@@ -122,8 +136,57 @@ def cargar_historial_supabase(cliente, cedula):
     except Exception as e:
         return [], str(e)
 
-# ================= CONFIGURACIÓN DE PÁGINA =================
-st.set_page_config(page_title="Gestión de Ventas", layout="wide", page_icon="🔴")
+def cargar_meta_supabase(cliente, cedula, periodo):
+    """Consulta la meta del vendedor para el periodo (ej. '2026-08').
+    Retorna (dict de la meta o None, error)."""
+    try:
+        respuesta = (
+            cliente.table("metas")
+            .select("*")
+            .eq("cedula_vendedor", str(cedula))
+            .eq("periodo", periodo)
+            .limit(1)
+            .execute()
+        )
+        datos = respuesta.data or []
+        return (datos[0] if datos else None), None
+    except Exception as e:
+        return None, str(e)
+
+def calcular_avance(datos_historial, hoy):
+    """Calcula el avance real del vendedor en el mes indicado (hoy) contra sus metas.
+    Reglas:
+      - POSPAGO:    ventas tipo 'Postpago'
+      - ACCESOS:    ventas 'Hogar' con acceso == 'SI'
+      - HOGAR:      ventas tipo 'Hogar' (cada una = 1)
+      - TERMINALES: suma de valor_equipo_claro de Kit/Reposicion/Tecnologia
+    Retorna dict {pospago, accesos, hogar, terminales} del mes."""
+    avance = {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0}
+    equipos_tipos = [
+        "Kit Contado", "Kit a Cuotas", "Reposicion a Cuotas",
+        "Reposicion cargo a la factura", "Reposicion pago Inmediato", "Tecnologia",
+    ]
+    for venta in datos_historial:
+        fv = venta.get("fecha_venta")
+        if not isinstance(fv, datetime.date):
+            continue
+        if fv.year != hoy.year or fv.month != hoy.month:
+            continue
+        tv = venta.get("tipo_venta")
+        if tv == "Postpago":
+            avance["pospago"] += 1
+        elif tv == "Hogar":
+            avance["hogar"] += 1
+            if venta.get("acceso") == "SI":
+                avance["accesos"] += 1
+        elif tv in equipos_tipos:
+            try:
+                avance["terminales"] += float(venta.get("valor_equipo_claro") or 0)
+            except (TypeError, ValueError):
+                pass
+    return avance
+
+
 
 # ================= CSS PERSONALIZADO =================
 st.markdown("""
@@ -238,8 +301,8 @@ hr {
 """, unsafe_allow_html=True)
 
 # ================= CARGAR ASESORES Y CONEXIÓN =================
-dict_asesores, error_csv = cargar_asesores()
 supabase, motivo_supabase = obtener_cliente_supabase()
+dict_asesores, error_csv = cargar_asesores(cliente=supabase)
 
 # ================= ESTADO DE LA SESIÓN =================
 if "form_key" not in st.session_state:
@@ -745,6 +808,51 @@ with tab_historial:
                 st.dataframe(df_pivot, use_container_width=True)
     else:
         st.info("📭 Aún no tiene ventas registradas en el mes actual.")
+
+    # ================= MIS METAS DEL MES =================
+    periodo_actual = hoy.strftime("%Y-%m")
+    if supabase is not None:
+        meta_vendedor, error_meta = cargar_meta_supabase(
+            supabase, st.session_state.usuario_logueado, periodo_actual
+        )
+        if error_meta:
+            meta_vendedor = None
+    else:
+        meta_vendedor = None
+
+    if meta_vendedor:
+        avance = calcular_avance(datos_historial, hoy)
+
+        def mostrar_meta(label, avance_val, meta_val, es_dinero=False):
+            if meta_val <= 0:
+                return
+            pct = (avance_val / meta_val * 100) if meta_val else 0
+            pct = max(0, min(100, pct))
+            meta_str = f"${meta_val:,.0f}" if es_dinero else f"{int(meta_val)}"
+            av_str = f"${avance_val:,.0f}" if es_dinero else f"{int(avance_val)}"
+            color = "#2ECC71" if pct >= 100 else ("#F39C12" if pct >= 50 else "#E74C3C")
+            st.markdown(
+                f"<div style='display:flex;justify-content:space-between;'>"
+                f"<b>{label}</b><span><b style='color:{color}'>{av_str}</b> / {meta_str} ({pct:.0f}%)</span></div>",
+                unsafe_allow_html=True,
+            )
+            st.progress(pct / 100)
+
+        st.markdown("---")
+        st.subheader("🎯 Mis Metas del Mes")
+        st.caption(f"Meta vigente en {periodo_actual} para: {st.session_state.nombre_vendedor}")
+        if not st.session_state.usuario_logueado in CEDULAS_ADMIN:
+            with st.container(border=True):
+                c1, c2 = st.columns(2)
+                with c1:
+                    mostrar_meta("Postpago", avance["pospago"], float(meta_vendedor.get("pospago") or 0))
+                    mostrar_meta("Accesos", avance["accesos"], float(meta_vendedor.get("accesos") or 0))
+                with c2:
+                    mostrar_meta("Hogar", avance["hogar"], float(meta_vendedor.get("hogar") or 0))
+                    mostrar_meta("Terminales", avance["terminales"], float(meta_vendedor.get("terminales") or 0), es_dinero=True)
+        else:
+            st.info("👑 Como administrador, la meta se muestra por vendedor individual. Seleccione la pestaña de historial para ver el detalle.")
+
     st.markdown("---")
     
     if not datos_historial:

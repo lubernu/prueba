@@ -186,6 +186,49 @@ def calcular_avance(datos_historial, hoy):
                 pass
     return avance
 
+def calcular_avance_por_asesor(datos_historial, hoy):
+    """Agrupa el avance del mes por cedula_vendedor.
+    Retorna dict {cedula: {pospago, accesos, hogar, terminales}}."""
+    resultados = {}
+    equipos_tipos = [
+        "Kit Contado", "Kit a Cuotas", "Reposicion a Cuotas",
+        "Reposicion cargo a la factura", "Reposicion pago Inmediato", "Tecnologia",
+    ]
+    for venta in datos_historial:
+        fv = venta.get("fecha_venta")
+        if not isinstance(fv, datetime.date):
+            continue
+        if fv.year != hoy.year or fv.month != hoy.month:
+            continue
+        cedula = str(venta.get("cedula_vendedor") or "DESCONOCIDO").strip()
+        acc = resultados.setdefault(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0})
+        tv = venta.get("tipo_venta")
+        if tv == "Postpago":
+            acc["pospago"] += 1
+        elif tv == "Hogar":
+            acc["hogar"] += 1
+            if venta.get("acceso") == "SI":
+                acc["accesos"] += 1
+        elif tv in equipos_tipos:
+            try:
+                acc["terminales"] += float(venta.get("valor_equipo_claro") or 0)
+            except (TypeError, ValueError):
+                pass
+    return resultados
+
+def cargar_todas_metas_supabase(cliente, periodo):
+    """Consulta todas las metas del periodo indicado. Retorna (lista, error)."""
+    try:
+        respuesta = (
+            cliente.table("metas")
+            .select("*")
+            .eq("periodo", periodo)
+            .execute()
+        )
+        return (respuesta.data or []), None
+    except Exception as e:
+        return [], str(e)
+
 
 
 # ================= CONFIGURACIÓN DE PÁGINA =================
@@ -823,7 +866,9 @@ with tab_historial:
     else:
         meta_vendedor = None
 
-    if meta_vendedor:
+    es_admin = st.session_state.usuario_logueado in CEDULAS_ADMIN
+
+    if meta_vendedor or es_admin:
         avance = calcular_avance(datos_historial, hoy)
 
         def mostrar_meta(label, avance_val, meta_val, es_dinero=False):
@@ -842,9 +887,9 @@ with tab_historial:
             st.progress(pct / 100)
 
         st.markdown("---")
-        st.subheader("🎯 Mis Metas del Mes")
-        st.caption(f"Meta vigente en {periodo_actual} para: {st.session_state.nombre_vendedor}")
         if not st.session_state.usuario_logueado in CEDULAS_ADMIN:
+            st.subheader("🎯 Mis Metas del Mes")
+            st.caption(f"Meta vigente en {periodo_actual} para: {st.session_state.nombre_vendedor}")
             with st.container(border=True):
                 c1, c2 = st.columns(2)
                 with c1:
@@ -854,7 +899,67 @@ with tab_historial:
                     mostrar_meta("Hogar", avance["hogar"], float(meta_vendedor.get("hogar") or 0))
                     mostrar_meta("Terminales", avance["terminales"], float(meta_vendedor.get("terminales") or 0), es_dinero=True)
         else:
-            st.info("👑 Como administrador, la meta se muestra por vendedor individual. Seleccione la pestaña de historial para ver el detalle.")
+            # ===== VISTA ADMINISTRADOR: metas de todos los asesores =====
+            meta_vendedor = None
+            metas_todas, error_metas = cargar_todas_metas_supabase(supabase, periodo_actual)
+            if error_metas:
+                st.error(f"❌ Error al consultar las metas: {error_metas}")
+                metas_todas = []
+            if metas_todas:
+                avance_por_asesor = calcular_avance_por_asesor(datos_historial, hoy)
+
+                # --- Tabla numérica consolidada ---
+                filas = []
+                for m in metas_todas:
+                    cedula = str(m.get("cedula_vendedor") or "").strip()
+                    nombre = dict_asesores.get(cedula, cedula)
+                    av = avance_por_asesor.get(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0})
+                    
+                    def celda(avv, mv, es_dinero=False):
+                        if mv <= 0:
+                            return "—"
+                        pct = (avv / mv * 100) if mv else 0
+                        fmt = lambda x: f"${x:,.0f}" if es_dinero else f"{int(x)}"
+                        return f"{fmt(avv)}/{fmt(mv)} ({pct:.0f}%)"
+                    
+                    filas.append({
+                        "Asesor": nombre,
+                        "Cédula": cedula,
+                        "Postpago": celda(av["pospago"], float(m.get("pospago") or 0)),
+                        "Hogar": celda(av["hogar"], float(m.get("hogar") or 0)),
+                        "Accesos": celda(av["accesos"], float(m.get("accesos") or 0)),
+                        "Terminales": celda(av["terminales"], float(m.get("terminales") or 0), es_dinero=True),
+                    })
+                df_metas = pd.DataFrame(filas)
+
+                st.markdown("### 🎯 Metas del Mes - Todos los Asesores")
+                st.caption(f"Avance / Meta ({periodo_actual})")
+                st.dataframe(df_metas, use_container_width=True, hide_index=True)
+                csv_metas = df_metas.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Exportar Metas (CSV)",
+                    data=csv_metas,
+                    file_name=f"metas_{periodo_actual}.csv",
+                    mime="text/csv",
+                )
+
+                # --- Tarjetas con barra de progreso por asesor ---
+                st.markdown("#### Progreso por Asesor")
+                for m in metas_todas:
+                    cedula = str(m.get("cedula_vendedor") or "").strip()
+                    nombre = dict_asesores.get(cedula, cedula)
+                    av = avance_por_asesor.get(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0})
+                    st.markdown(f"<b>{nombre} (CC: {cedula})</b>", unsafe_allow_html=True)
+                    with st.container(border=True):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            mostrar_meta("Postpago", av["pospago"], float(m.get("pospago") or 0))
+                            mostrar_meta("Accesos", av["accesos"], float(m.get("accesos") or 0))
+                        with c2:
+                            mostrar_meta("Hogar", av["hogar"], float(m.get("hogar") or 0))
+                            mostrar_meta("Terminales", av["terminales"], float(m.get("terminales") or 0), es_dinero=True)
+            else:
+                st.info("📭 Aún no hay metas cargadas para este mes.")
 
     st.markdown("---")
     

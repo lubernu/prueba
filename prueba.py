@@ -6,7 +6,7 @@ import os
 from supabase import create_client
 
 TABLA_VENTAS = "ventas"
-CEDULAS_ADMIN = ["94458575", "1746215" , "33366639"]
+CEDULAS_ADMIN = ["94458575", "1746215", "33366639"]
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def validar_campo_numerico(valor_ingresado, longitud_esperada):
@@ -686,7 +686,7 @@ with tab_registro:
             if equipo_nuevo == "SI":
                 st.markdown("---")
                 st.markdown("#### 📱 Datos del Equipo Nuevo")
-                eq_col1, eq_col2, eq_col3 = st.columns(3)
+                eq_col1, eq_col2, eq_col3, eq_col4 = st.columns(4)
                 with eq_col1:
                     datos_guardar["referencia"] = st.text_input("Referencia del Equipo", key=f"ref_{fk}")
                 with eq_col2:
@@ -711,6 +711,18 @@ with tab_registro:
                         es_valido, msg_error = validar_campo_numerico(datos_guardar["iccid"], 17)
                         if msg_error:
                             st.error(f"**ICCID:** {msg_error}")
+                with eq_col4:
+                    datos_guardar["valor_equipo_claro"] = st.number_input(
+                        "Valor del Equipo ($)",
+                        min_value=0,
+                        step=1000,
+                        key=f"valor_equipo_post_{fk}"
+                    )
+                total_postpago = float(datos_guardar.get("valor_equipo_claro") or 0) + float(datos_guardar.get("valor_plan") or 0)
+                st.markdown(
+                    f"### 💰 Total (Equipo + Plan): <span style='color:#DA291C'>${total_postpago:,.0f}</span>",
+                    unsafe_allow_html=True,
+                )
                 
     elif tipo_venta in ["Hogar"]:
         with st.container(border=True):
@@ -725,7 +737,7 @@ with tab_registro:
                 datos_guardar["instalacion"] = st.number_input("Costo Instalación ($)", min_value=0, key=f"inst_{fk}")
                 datos_guardar["campana"] = st.text_input("Campaña Asociada", key=f"camp_{fk}")
             with col3:                
-                datos_guardar["servicios"] = st.text_input("Servicios Contratados", key=f"serv_fijo_{fk}")
+                datos_guardar["servicios"] = st.selectbox("Servicios Contratados", ["Triple", "Doble", "Sencillo"], key=f"serv_fijo_{fk}")
                 datos_guardar["cuenta"] = st.text_input("Número de Cuenta", key=f"cta_{fk}")
                 datos_guardar["acceso"] = st.selectbox("Acceso", ["SI", "NO"], key=f"acc_{fk}")
                 

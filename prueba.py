@@ -674,7 +674,7 @@ with tab_registro:
     elif tipo_venta == "Postpago":
         with st.container(border=True):
             st.subheader("4. DESCRIPCIÓN DEL PLAN")
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 datos_guardar["plan"] = st.text_input("Nombre del Plan", key=f"plan_{fk}")
             with col2:
@@ -682,6 +682,14 @@ with tab_registro:
             with col3:
                 datos_guardar["valor_plan"] = st.number_input("Valor Mensual ($)", min_value=0.0, key=f"vplan_{fk}")
             with col4:
+                datos_guardar["valor_pagado_cliente"] = st.number_input(
+                    "Valor Pagado Cliente ($)",
+                    min_value=0.0,
+                    step=1000.0,
+                    key=f"vpagado_post_{fk}",
+                    help="Valor que efectivamente paga el cliente (después de descuentos en el plan)."
+                )
+            with col5:
                 equipo_nuevo = st.selectbox("Equipo Nuevo", ["NO", "SI"], key=f"equipo_nuevo_{fk}")
             if equipo_nuevo == "SI":
                 st.markdown("---")

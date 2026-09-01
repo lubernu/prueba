@@ -12,8 +12,7 @@ def _get_app_config(clave, valor_default):
         return valor_default
 
 TABLA_VENTAS = _get_app_config("tabla_ventas", "ventas")
-CEDULAS_ADMIN = list(_get_app_config("cedulas_admin", ["94458575", "1746215", "33366639"]))
-
+CEDULAS_ADMIN = list(_get_app_config("cedulas_admin", []))
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def validar_campo_numerico(valor_ingresado, longitud_esperada):

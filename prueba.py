@@ -160,8 +160,9 @@ def calcular_avance(datos_historial, hoy):
       - ACCESOS:    ventas 'Hogar' con acceso == 'SI'
       - HOGAR:      ventas tipo 'Hogar' (cada una = 1)
       - TERMINALES: suma de valor_equipo_claro de Kit/Reposicion/Tecnologia
-    Retorna dict {pospago, accesos, hogar, terminales} del mes."""
-    avance = {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0}
+      - CLARO_UP:   conteo de ventas con claro_up activado
+    Retorna dict {pospago, accesos, hogar, terminales, claro_up} del mes."""
+    avance = {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0, "claro_up": 0}
     equipos_tipos = [
         "Kit Contado", "Kit a Cuotas", "Reposicion a Cuotas",
         "Reposicion cargo a la factura", "Reposicion pago Inmediato", "Tecnologia",
@@ -184,11 +185,13 @@ def calcular_avance(datos_historial, hoy):
                 avance["terminales"] += float(venta.get("valor_equipo_claro") or 0)
             except (TypeError, ValueError):
                 pass
+        if venta.get("claro_up") is True or str(venta.get("claro_up")).lower() == "true":
+            avance["claro_up"] += 1
     return avance
 
 def calcular_avance_por_asesor(datos_historial, hoy):
     """Agrupa el avance del mes por cedula_vendedor.
-    Retorna dict {cedula: {pospago, accesos, hogar, terminales}}."""
+    Retorna dict {cedula: {pospago, accesos, hogar, terminales, claro_up}}."""
     resultados = {}
     equipos_tipos = [
         "Kit Contado", "Kit a Cuotas", "Reposicion a Cuotas",
@@ -201,7 +204,7 @@ def calcular_avance_por_asesor(datos_historial, hoy):
         if fv.year != hoy.year or fv.month != hoy.month:
             continue
         cedula = str(venta.get("cedula_vendedor") or "DESCONOCIDO").strip()
-        acc = resultados.setdefault(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0})
+        acc = resultados.setdefault(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0, "claro_up": 0})
         tv = venta.get("tipo_venta")
         if tv == "Postpago":
             acc["pospago"] += 1
@@ -214,6 +217,8 @@ def calcular_avance_por_asesor(datos_historial, hoy):
                 acc["terminales"] += float(venta.get("valor_equipo_claro") or 0)
             except (TypeError, ValueError):
                 pass
+        if venta.get("claro_up") is True or str(venta.get("claro_up")).lower() == "true":
+            acc["claro_up"] += 1
     return resultados
 
 def cargar_todas_metas_supabase(cliente, periodo):
@@ -915,6 +920,7 @@ with tab_historial:
                 with c1:
                     mostrar_meta("Postpago", avance["pospago"], float(meta_vendedor.get("pospago") or 0))
                     mostrar_meta("Accesos", avance["accesos"], float(meta_vendedor.get("accesos") or 0))
+                    mostrar_meta("Claro Up", avance["claro_up"], float(meta_vendedor.get("claro_up") or 0))
                 with c2:
                     mostrar_meta("Hogar", avance["hogar"], float(meta_vendedor.get("hogar") or 0))
                     mostrar_meta("Terminales", avance["terminales"], float(meta_vendedor.get("terminales") or 0), es_dinero=True)
@@ -933,7 +939,7 @@ with tab_historial:
                 for m in metas_todas:
                     cedula = str(m.get("cedula_vendedor") or "").strip()
                     nombre = dict_asesores.get(cedula, cedula)
-                    av = avance_por_asesor.get(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0})
+                    av = avance_por_asesor.get(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0, "claro_up": 0})
                     
                     def celda(avv, mv, es_dinero=False):
                         if mv <= 0:
@@ -949,6 +955,7 @@ with tab_historial:
                         "Hogar": celda(av["hogar"], float(m.get("hogar") or 0)),
                         "Accesos": celda(av["accesos"], float(m.get("accesos") or 0)),
                         "Terminales": celda(av["terminales"], float(m.get("terminales") or 0), es_dinero=True),
+                        "Claro Up": celda(av["claro_up"], float(m.get("claro_up") or 0)),
                     })
                 df_metas = pd.DataFrame(filas)
 
@@ -968,13 +975,14 @@ with tab_historial:
                 for m in metas_todas:
                     cedula = str(m.get("cedula_vendedor") or "").strip()
                     nombre = dict_asesores.get(cedula, cedula)
-                    av = avance_por_asesor.get(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0})
+                    av = avance_por_asesor.get(cedula, {"pospago": 0, "accesos": 0, "hogar": 0, "terminales": 0, "claro_up": 0})
                     st.markdown(f"<b>{nombre} (CC: {cedula})</b>", unsafe_allow_html=True)
                     with st.container(border=True):
                         c1, c2 = st.columns(2)
                         with c1:
                             mostrar_meta("Postpago", av["pospago"], float(m.get("pospago") or 0))
                             mostrar_meta("Accesos", av["accesos"], float(m.get("accesos") or 0))
+                            mostrar_meta("Claro Up", av["claro_up"], float(m.get("claro_up") or 0))
                         with c2:
                             mostrar_meta("Hogar", av["hogar"], float(m.get("hogar") or 0))
                             mostrar_meta("Terminales", av["terminales"], float(m.get("terminales") or 0), es_dinero=True)

@@ -534,6 +534,20 @@ with tab_registro:
                 )
                 datos_guardar["punto_venta"] = nuevo_pdv
                 
+        METODOS_PAGO = [
+            "Efectivo", "Tarjeta Débito", "Tarjeta Crédito", "QR",
+            "Consignación", "Transferencia Bancaria",
+            "Llave Bancolombia", "Llave Banco de Bogotá", "Wompi"
+        ]
+        datos_guardar["recibido_en"] = st.selectbox(
+            "Método de Pago",
+            options=[None] + METODOS_PAGO,
+            index=0,
+            placeholder="Seleccione el método de pago recibido...",
+            key=f"recibido_en_{fk}",
+            help="Indica cómo recibió el pago del cliente (opcional)."
+        )
+
     # --- SECCIÓN 2: DATOS DEL CLIENTE ---
     with st.container(border=True):
         st.subheader("2. DATOS DEL CLIENTE")

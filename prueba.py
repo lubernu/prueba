@@ -4,6 +4,7 @@ import datetime
 import pandas as pd
 import os
 from supabase import create_client
+from facturacion import cargar_facturas_csv, calcular_estado_facturacion
 
 def _get_app_config(clave, valor_default):
     try:
@@ -1118,6 +1119,29 @@ with tab_historial:
                         if df_dinero_pdv is not None:
                             st.markdown("**Por PDV**")
                             st.dataframe(df_dinero_pdv, use_container_width=True)
+
+            # ===== VISTA ADMIN: Estado de Facturación =====
+            st.subheader("🧾 Estado de Facturación del Mes")
+            df_fact = cargar_facturas_csv()
+            if df_fact is None:
+                st.info("📁 No se encontró 'FacturadoParaCruce.csv' en el proyecto.")
+            else:
+                df_facturacion = calcular_estado_facturacion(datos_historial, hoy, df_fact)
+                if df_facturacion.empty:
+                    st.info("📭 No hay ventas registradas en el mes actual.")
+                else:
+                    filtro_fact = st.selectbox(
+                        "🔍 Filtrar por estado de facturación",
+                        options=["Todos", "Facturados", "Pendientes"],
+                        index=0,
+                    )
+                    if filtro_fact == "Facturados":
+                        df_vis = df_facturacion[df_facturacion["Facturado"] == "SÍ"]
+                    elif filtro_fact == "Pendientes":
+                        df_vis = df_facturacion[df_facturacion["Facturado"] == "NO"]
+                    else:
+                        df_vis = df_facturacion
+                    st.dataframe(df_vis, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     

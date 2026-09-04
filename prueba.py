@@ -829,12 +829,6 @@ with tab_registro:
 
 # ================= PESTAÑA 2: HISTORIAL =================
 with tab_historial:
-    st.subheader("📜 Mi Historial de Operaciones")
-    if st.session_state.usuario_logueado in CEDULAS_ADMIN:
-        st.caption("👑 Modo Administrador: Mostrando TODAS las ventas de todos los vendedores.")
-    else:
-        st.caption(f"Mostrando únicamente las ventas de: {st.session_state.nombre_vendedor} (CC: {st.session_state.usuario_logueado})")
-    
     if supabase is not None:
         ventas_db, error_db = cargar_historial_supabase(supabase, st.session_state.usuario_logueado)
         if error_db:
@@ -850,9 +844,26 @@ with tab_historial:
             venta for venta in ventas_db
             if venta.get("cedula_vendedor") == st.session_state.usuario_logueado
         ]
+
+    hoy = datetime.date.today()
+    total_mes = int(len([
+        v for v in datos_historial
+        if isinstance(v.get("fecha_venta"), datetime.date)
+        and v["fecha_venta"].year == hoy.year
+        and v["fecha_venta"].month == hoy.month
+    ]))
+
+    tit_col, metric_col = st.columns([6, 1])
+    with tit_col:
+        st.subheader("📜 Mi Historial de Operaciones")
+    with metric_col:
+        st.metric(label="Total Ventas del Mes", value=total_mes)
+    if st.session_state.usuario_logueado in CEDULAS_ADMIN:
+        st.caption("👑 Modo Administrador: Mostrando TODAS las ventas de todos los vendedores.")
+    else:
+        st.caption(f"Mostrando únicamente las ventas de: {st.session_state.nombre_vendedor} (CC: {st.session_state.usuario_logueado})")
     
     # ================= RESUMEN DEL MES ACTUAL POR TIPO DE TRANSACCIÓN =================
-    hoy = datetime.date.today()
     st.markdown("---")
     st.subheader(f"📊 Resumen de Ventas - {hoy.strftime('%B %Y').capitalize()}")
     tipos_del_mes = [
@@ -876,12 +887,31 @@ with tab_historial:
             [{"Tipo de Transacción": "TOTAL", "Ventas del Mes": total_mes}]
         )
         df_resumen = pd.concat([df_resumen, fila_total], ignore_index=True)
-        
-        col_res1, col_res2 = st.columns(2)
+
+        financieras_mes = [
+            v.get("financiera") for v in datos_historial
+            if isinstance(v.get("fecha_venta"), datetime.date)
+            and v["fecha_venta"].year == hoy.year
+            and v["fecha_venta"].month == hoy.month
+            and v.get("financiera")
+        ]
+
+        col_res1, col_res2 = st.columns([3, 7])
         with col_res1:
             st.markdown("**Resumen por Tipo de Transacción**")
             st.dataframe(df_resumen, use_container_width=True, hide_index=True)
-            st.metric(label="Total Ventas del Mes", value=total_mes)
+
+            if financieras_mes:
+                st.markdown("**Resumen por Financiera**")
+                df_fin = (
+                    pd.DataFrame({"Financiera": financieras_mes})
+                    .groupby("Financiera")
+                    .size()
+                    .reset_index(name="Ventas del Mes")
+                    .sort_values("Ventas del Mes", ascending=False, ignore_index=True)
+                    .rename(columns={"Financiera": "Financieras"})
+                )
+                st.dataframe(df_fin, use_container_width=True, hide_index=True)
         with col_res2:
             st.markdown("**Ventas por Asesor y Tipo**")
             ventas_mes = [
@@ -901,6 +931,23 @@ with tab_historial:
                 df_pivot.index.name = "Asesor"
                 df_pivot.columns.name = None
                 st.dataframe(df_pivot, use_container_width=True)
+
+                if financieras_mes:
+                    st.markdown("**Ventas por Asesor y Financiera**")
+                    ventas_fin_mes = [
+                        v for v in ventas_mes
+                        if v.get("financiera")
+                    ]
+                    if ventas_fin_mes:
+                        df_pivot_fin = pd.crosstab(
+                            index=pd.Series([v["nombre_vendedor"] for v in ventas_fin_mes]),
+                            columns=pd.Series([v["financiera"] for v in ventas_fin_mes]),
+                            margins=True,
+                            margins_name="TOTAL"
+                        )
+                        df_pivot_fin.index.name = "Asesor"
+                        df_pivot_fin.columns.name = None
+                        st.dataframe(df_pivot_fin, use_container_width=True)
     else:
         st.info("📭 Aún no tiene ventas registradas en el mes actual.")
 
@@ -1012,6 +1059,65 @@ with tab_historial:
                             mostrar_meta("Terminales", av["terminales"], float(m.get("terminales") or 0), es_dinero=True)
             else:
                 st.info("📭 Aún no hay metas cargadas para este mes.")
+
+            # ===== VISTA ADMIN: Dinero Recibido por Asesor/PDV y Método de Pago =====
+            ventas_pago = [
+                v for v in datos_historial
+                if isinstance(v.get("fecha_venta"), datetime.date)
+                and v["fecha_venta"].year == hoy.year
+                and v["fecha_venta"].month == hoy.month
+                and v.get("valor_pagado_cliente") and float(v["valor_pagado_cliente"]) > 0
+                and v.get("recibido_en")
+            ]
+            if ventas_pago:
+                ventas_pago_nombre = [v for v in ventas_pago if v.get("nombre_vendedor")]
+                ventas_pago_pdv = [v for v in ventas_pago if v.get("punto_venta")]
+
+                df_dinero_asesor = None
+                df_dinero_pdv = None
+                if ventas_pago_nombre:
+                    df_dinero_asesor = (
+                        pd.DataFrame(ventas_pago_nombre)
+                        .pivot_table(
+                            index="nombre_vendedor",
+                            columns="recibido_en",
+                            values="valor_pagado_cliente",
+                            aggfunc="sum",
+                            fill_value=0,
+                            margins=True,
+                            margins_name="TOTAL",
+                        )
+                    )
+                    df_dinero_asesor.index.name = "Asesor"
+                    df_dinero_asesor.columns.name = None
+
+                if ventas_pago_pdv:
+                    df_dinero_pdv = (
+                        pd.DataFrame(ventas_pago_pdv)
+                        .pivot_table(
+                            index="punto_venta",
+                            columns="recibido_en",
+                            values="valor_pagado_cliente",
+                            aggfunc="sum",
+                            fill_value=0,
+                            margins=True,
+                            margins_name="TOTAL",
+                        )
+                    )
+                    df_dinero_pdv.index.name = "PDV"
+                    df_dinero_pdv.columns.name = None
+
+                if df_dinero_asesor is not None or df_dinero_pdv is not None:
+                    st.subheader("💵 Dinero Recibido por Método de Pago")
+                    c_asesor, c_pdv = st.columns(2)
+                    with c_asesor:
+                        if df_dinero_asesor is not None:
+                            st.markdown("**Por Asesor**")
+                            st.dataframe(df_dinero_asesor, use_container_width=True)
+                    with c_pdv:
+                        if df_dinero_pdv is not None:
+                            st.markdown("**Por PDV**")
+                            st.dataframe(df_dinero_pdv, use_container_width=True)
 
     st.markdown("---")
     

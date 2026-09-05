@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 import os
 from supabase import create_client
-from facturacion import cargar_facturas_csv, calcular_estado_facturacion
+from facturacion import cargar_facturas_csv, cargar_facturas_postpago, calcular_estado_facturacion
 
 def _get_app_config(clave, valor_default):
     try:
@@ -1134,10 +1134,11 @@ with tab_historial:
             # ===== VISTA ADMIN: Estado de Facturación =====
             st.subheader("🧾 Estado de Facturación del Mes")
             df_fact = cargar_facturas_csv()
-            if df_fact is None:
-                st.info("📁 No se encontró 'FacturadoParaCruce.csv' en el proyecto.")
+            df_post = cargar_facturas_postpago()
+            if df_fact is None and df_post is None:
+                st.info("📁 No se encontraron 'FacturadoParaCruce.csv' ni 'Facturado_Postpago.csv' en el proyecto.")
             else:
-                df_facturacion = calcular_estado_facturacion(datos_historial, hoy, df_fact)
+                df_facturacion = calcular_estado_facturacion(datos_historial, hoy, df_fact, df_post)
                 if df_facturacion.empty:
                     st.info("📭 No hay ventas registradas en el mes actual.")
                 else:

@@ -27,6 +27,15 @@ def validar_campo_numerico(valor_ingresado, longitud_esperada):
         return True, ""
     return False, ""
 
+def validar_campo_alfanumerico(valor_ingresado, longitud_maxima=15):
+    if not valor_ingresado:
+        return False, ""
+    if not re.fullmatch(r"[A-Za-z0-9]+", valor_ingresado):
+        return False, "Solo se permiten letras y números (sin espacios ni símbolos)."
+    if len(valor_ingresado) > longitud_maxima:
+        return False, f"Máximo {longitud_maxima} caracteres."
+    return True, ""
+
 def validar_formato_correo(correo):
     """Valida el formato del correo electrónico: texto@texto.xx"""
     if not correo:
@@ -604,12 +613,13 @@ with tab_registro:
                     "IMEI", 
                     key=f"imei_{fk}", 
                     max_chars=15, 
-                    placeholder="Ej: 356938035643809 (15 dígitos)"
+                    placeholder="Ej: 356938035643809 o serie tecnología"
                 )
                 if datos_guardar["imei"]:
-                    es_valido, msg_error = validar_campo_numerico(datos_guardar["imei"], 15)
+                    es_valido, msg_error = validar_campo_alfanumerico(datos_guardar["imei"], 15)
                     if msg_error:
                         st.error(f"**IMEI:** {msg_error}")
+                    datos_guardar["imei"] = datos_guardar["imei"].strip().upper()
             with col3:
                 datos_guardar["iccid"] = st.text_input(
                     "ICCID",
@@ -732,12 +742,13 @@ with tab_registro:
                         "IMEI",
                         key=f"imei_{fk}",
                         max_chars=15,
-                        placeholder="Ej: 356938035643809 (15 dígitos)"
+                        placeholder="Ej: 356938035643809 o serie tecnología"
                     )
                     if datos_guardar["imei"]:
-                        es_valido, msg_error = validar_campo_numerico(datos_guardar["imei"], 15)
+                        es_valido, msg_error = validar_campo_alfanumerico(datos_guardar["imei"], 15)
                         if msg_error:
                             st.error(f"**IMEI:** {msg_error}")
+                        datos_guardar["imei"] = datos_guardar["imei"].strip().upper()
                 with eq_col3:
                     datos_guardar["iccid"] = st.text_input(
                         "ICCID",

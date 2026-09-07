@@ -714,7 +714,7 @@ with tab_registro:
     elif tipo_venta == "Postpago":
         with st.container(border=True):
             st.subheader("4. DESCRIPCIÓN DEL PLAN")
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col3, col4, col5 , col6= st.columns(6)
             with col1:
                 datos_guardar["plan"] = st.text_input("Nombre del Plan", key=f"plan_{fk}")
             with col2:
@@ -730,6 +730,14 @@ with tab_registro:
                     help="Valor que efectivamente paga el cliente (después de descuentos en el plan)."
                 )
             with col5:
+                datos_guardar["min"] = st.text_input(
+                                    "MIN", 
+                                    key=f"min_{fk}", 
+                                    max_chars=10, 
+                                    placeholder="Ej: 3001234567 (10 dígitos)"
+                                )
+
+            with col6:
                 equipo_nuevo = st.selectbox("Equipo Nuevo", ["NO", "SI"], key=f"equipo_nuevo_{fk}")
             if equipo_nuevo == "SI":
                 st.markdown("---")
@@ -1161,6 +1169,22 @@ with tab_historial:
         st.info("📭 No tiene ventas registradas aún. Vaya a la pestaña 'Registrar Nueva Venta' para comenzar.")
     else:
         df_historial = pd.DataFrame(datos_historial)
+
+        df_mes = df_historial[
+            df_historial["fecha_venta"].apply(
+                lambda f: isinstance(f, datetime.date)
+                and f.year == hoy.year
+                and f.month == hoy.month
+            )
+        ].copy()
+        df_mes["valor_equipo"] = pd.to_numeric(df_mes["valor_equipo"], errors="coerce").fillna(0)
+        df_mes["valor_pagado_cliente"] = pd.to_numeric(df_mes["valor_pagado_cliente"], errors="coerce").fillna(0)
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("📦 Ventas del Mes", value=len(df_mes))
+        m2.metric("💵 Total Equipo Mes", value=f"${int(df_mes['valor_equipo'].sum()):,}".replace(",", "."))
+        m3.metric("💰 Total Pagado Mes", value=f"${int(df_mes['valor_pagado_cliente'].sum()):,}".replace(",", "."))
+
         with st.container(border=True):
             st.markdown("**Filtros Disponibles**")
             col_f1, col_f2 = st.columns(2)
@@ -1182,13 +1206,43 @@ with tab_historial:
             if filtro_pdv:
                 df_historial = df_historial[df_historial["punto_venta"].isin(filtro_pdv)]
                 
-            st.markdown(f"**Total de registros encontrados:** {len(df_historial)}")
-            st.dataframe(df_historial, use_container_width=True, hide_index=True)
-            
-            csv = df_historial.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Exportar Mi Reporte (CSV)",
-                data=csv,
-                file_name=f"reporte_ventas_{st.session_state.usuario_logueado}_{datetime.date.today()}.csv",
-                mime="text/csv",
+            st.markdown("---")
+            st.markdown(f"### 📋 Registros encontrados: **{len(df_historial)}**")
+
+            df_historial = df_historial.sort_values("fecha_venta", ascending=False)
+
+            columnas_visibles = [
+                "fecha_venta", "tipo_venta", "punto_venta", "nombre_cliente",
+                "tipo_documento", "nro_documento", "contacto_cliente",
+                "referencia", "imei", "iccid", "min", "plan",
+                "valor_equipo", "valor_pagado_cliente", "financiera", "recibido_en",
+            ]
+            columnas_visibles = [c for c in columnas_visibles if c in df_historial.columns]
+
+            config_columnas = {
+                "fecha_venta": st.column_config.DateColumn("Fecha Venta", format="DD/MM/YYYY"),
+                "valor_equipo": st.column_config.NumberColumn("Valor Equipo ($)", format="$ %.0f"),
+                "valor_pagado_cliente": st.column_config.NumberColumn("Pagado Cliente ($)", format="$ %.0f"),
+            }
+            config_columnas = {k: v for k, v in config_columnas.items() if k in columnas_visibles}
+
+            st.dataframe(
+                df_historial[columnas_visibles],
+                use_container_width=True,
+                hide_index=True,
+                height=420,
+                column_config=config_columnas,
             )
+
+            c_exp, c_desc = st.columns([4, 6])
+            with c_exp:
+                csv = df_historial.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Exportar Mi Reporte (CSV completo)",
+                    data=csv,
+                    file_name=f"reporte_ventas_{st.session_state.usuario_logueado}_{datetime.date.today()}.csv",
+                    mime="text/csv",
+                )
+            with c_desc:
+                st.caption("💡 Haga clic en los encabezados de las columnas para ordenar la tabla.")
+            

@@ -69,6 +69,8 @@ def calcular_estado_facturacion(datos_historial, hoy, df_fact, df_post):
         (df_fact), que ya excluye el postpago real. No hay paso por cédula.
       - Ventas Sim card -> se cruzan por ICCID contra la columna imei de las
         filas tipo AMIGO SIM de FacturadoParaCruce.csv (que almacena ICCIDs).
+      - Las ventas tipo "Tecnologia" y "Hogar" se excluyen del reporte:
+        se facturan por otra plataforma.
 
     Devuelve un DataFrame con columnas:
       Cédula Vendedor, Vendedor, Tipo, Fecha, Cliente, Cédula Cliente,
@@ -90,6 +92,7 @@ def calcular_estado_facturacion(datos_historial, hoy, df_fact, df_post):
         if isinstance(v.get("fecha_venta"), datetime.date)
         and v["fecha_venta"].year == hoy.year
         and v["fecha_venta"].month == hoy.month
+        and normalizar(v.get("tipo_venta")) not in ("TECNOLOGIA", "HOGAR")
     ]
 
     filas = []

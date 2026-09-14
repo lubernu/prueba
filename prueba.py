@@ -382,6 +382,8 @@ if "nombre_vendedor" not in st.session_state:
     st.session_state.nombre_vendedor = None
 if "pdv_seleccionado" not in st.session_state:
     st.session_state.pdv_seleccionado = None
+if "meta_volante_visto" not in st.session_state:
+    st.session_state.meta_volante_visto = False
 
 # ================= DATOS DE EJEMPLO (PDVs) =================
 pdv_disponibles = {
@@ -482,8 +484,26 @@ if st.session_state.pdv_seleccionado is None:
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
             st.session_state.usuario_logueado = None
             st.session_state.nombre_vendedor = None
+            st.session_state.pdv_seleccionado = None
+            st.session_state.meta_volante_visto = False
             st.rerun()
     st.stop()
+
+# ================= PANTALLA 2.5: META VOLANTE (campaña por tiempo limitado) =================
+if supabase is not None and not st.session_state.meta_volante_visto:
+    try:
+        from meta_volante import render_meta_volante
+        render_meta_volante(
+            supabase,
+            st.session_state.pdv_seleccionado,
+            pdv_disponibles.get(st.session_state.pdv_seleccionado, st.session_state.pdv_seleccionado),
+        )
+        if st.button("✅ Entrar a la app", type="primary", use_container_width=True):
+            st.session_state.meta_volante_visto = True
+            st.rerun()
+        st.stop()
+    except ImportError:
+        st.session_state.meta_volante_visto = True
 
 # ================= BARRA DE INFORMACIÓN DEL USUARIO =================
 col_info1, col_info2, col_info3 = st.columns([2, 2, 1])
@@ -496,6 +516,7 @@ with col_info3:
         st.session_state.usuario_logueado = None
         st.session_state.nombre_vendedor = None
         st.session_state.pdv_seleccionado = None
+        st.session_state.meta_volante_visto = False
         st.rerun()
 
 st.markdown("<hr>", unsafe_allow_html=True)

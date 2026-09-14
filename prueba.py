@@ -14,6 +14,7 @@ def _get_app_config(clave, valor_default):
 
 TABLA_VENTAS = _get_app_config("tabla_ventas", "ventas")
 CEDULAS_ADMIN = list(_get_app_config("cedulas_admin", []))
+CEDULA_SUPERUSUARIO = str(_get_app_config("cedula_superusuario", "")).strip()
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def validar_campo_numerico(valor_ingresado, longitud_esperada):
@@ -530,7 +531,13 @@ if supabase is None:
 
 # ================= ESTRUCTURA DE PESTAÑAS =================
 st.title("📋 Portal de Gestión Comercial")
-tab_registro, tab_historial = st.tabs(["📝 Registrar Nueva Venta", "📜 Historial de Operaciones"])
+es_superusuario = st.session_state.usuario_logueado == CEDULA_SUPERUSUARIO
+if es_superusuario:
+    tab_registro, tab_historial, tab_correcciones = st.tabs(
+        ["📝 Registrar Nueva Venta", "📜 Historial de Operaciones", "⚙️ Correcciones"]
+    )
+else:
+    tab_registro, tab_historial = st.tabs(["📝 Registrar Nueva Venta", "📜 Historial de Operaciones"])
 
 # ================= PESTAÑA 1: REGISTRO =================
 with tab_registro:
@@ -1266,4 +1273,20 @@ with tab_historial:
                 )
             with c_desc:
                 st.caption("💡 Haga clic en los encabezados de las columnas para ordenar la tabla.")
+
+# ================= PESTAÑA 3: CORRECCIONES (solo superusuario) =================
+if es_superusuario:
+    with tab_correcciones:
+        if supabase is None:
+            st.warning(
+                "⚠️ Supabase no configurado. No se pueden hacer correcciones sin conexión. "
+                f"Motivo: `{motivo_supabase}`"
+            )
+        else:
+            try:
+                from admin_correcciones import render_admin_correcciones
+            except ImportError:
+                st.error("❌ No se encontró el módulo `admin_correcciones.py`.")
+            else:
+                render_admin_correcciones(supabase)
             

@@ -277,6 +277,18 @@ def _son_iguales(original, nuevo):
     return _normalizar_comp(original) == _normalizar_comp(nuevo)
 
 
+def _a_monton(valor):
+    """Convierte un valor numérico para Postgres: int si es entero, float si no.
+
+    Evita mandar cadenas como "25000.0" que Postgres rechaza en columnas integer.
+    """
+    try:
+        f = float(valor)
+    except (TypeError, ValueError):
+        return valor
+    return int(f) if f.is_integer() else f
+
+
 def _armar_registro_cambios(venta, valores):
     """Construye el dict de UPDATE con solo los campos que cambiaron."""
     tipos = {c["col"]: c["tipo"] for c in CAMPOS_FORMULARIO}
@@ -297,12 +309,14 @@ def _armar_registro_cambios(venta, valores):
             nuevo = nuevo.isoformat()
         if col == "claro_up":
             nuevo = bool(nuevo)
+        if tipos.get(col) == "numero":
+            nuevo = _a_monton(nuevo)
         if nuevo is None or nuevo == "":
             nuevo = None
         registro[col] = nuevo
 
     if "valor_equipo" in valores and not _son_iguales(venta.get("valor_equipo"), valores["valor_equipo"]):
-        registro["valor_equipo"] = float(valores["valor_equipo"])
+        registro["valor_equipo"] = _a_monton(valores["valor_equipo"])
 
     return registro
 

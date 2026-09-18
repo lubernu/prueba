@@ -69,8 +69,7 @@ TIPOS_TERMINALES = [
     "Kit a Cuotas",
     "Reposicion a Cuotas",
     "Reposicion cargo a la factura",
-    "Reposicion pago Inmediato",
-    "Tecnologia",
+    "Reposicion pago Inmediato",    
 ]
 
 
@@ -249,3 +248,140 @@ def render_meta_volante(cliente, pdv, nombre_pdv):
 
     st.markdown("---")
     st.caption(f"Ventas registradas en el PDV durante la campaña: **{len(ventas_pdv)}**")
+
+
+def resultados_meta_volante(cliente, pdv_disponibles):
+    """Muestra los resultados finales de la campaña para los administradores.
+
+    Tabla resumen con TODOS los puntos de venta (los que no registraron ventas
+    en la campaña aparecen con avance 0) y bloque de ganadores por ítem.
+    Solo se muestra cuando la campaña ya terminó (hoy > FECHA_FIN).
+    """
+    hoy = datetime.date.today()
+
+    st.markdown("---")
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align:center; padding:20px; border:2px solid #DA291C;
+                    border-radius:12px; background:linear-gradient(135deg,#FFF0EF,#FFFFFF);">
+            <div style="font-size:26px; font-weight:bold; color:#DA291C;">
+                🏆 Resultados Meta Volante
+            </div>
+            <div style="font-size:15px; color:#666; margin-top:8px;">
+                Campaña del 11 al 17 de septiembre 2026 — cierre de resultados
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if hoy <= FECHA_FIN:
+        st.info("📅 La campaña aún no ha terminado. Los resultados se publicarán al cierre.")
+        return
+
+    respuesta = cliente.table("ventas").select(
+        "punto_venta, fecha_venta, tipo_venta, valor_equipo_claro, claro_up, acceso"
+    ).gte("fecha_venta", FECHA_INICIO.isoformat()).lte("fecha_venta", FECHA_FIN.isoformat()).execute()
+    ventas_totales = respuesta.data or []
+
+    avance_por_pdv = {}
+    total_por_pdv = {}
+    for v in ventas_totales:
+        pdv = v.get("punto_venta")
+        if not pdv:
+            continue
+        avance_por_pdv.setdefault(pdv, []).append(v)
+        total_por_pdv[pdv] = len(avance_por_pdv[pdv])
+
+    # Ganancias por PDV (premio del nivel máx alcanzado por categoría)
+    premios_por_pdv = {}
+    ganador_por_cat = {}
+    for cat in CATEGORIAS:
+        cl = cat["clave"]
+        mejor_valor = 0
+        mejor_pdv = None
+        for pdv, ventas_pdv in avance_por_pdv.items():
+            av = calcular_avance(ventas_pdv)
+            if av[cl] > mejor_valor:
+                mejor_valor = av[cl]
+                mejor_pdv = pdv
+        ganador_por_cat[cl] = {"pdv": mejor_pdv, "valor": mejor_valor}
+        if mejor_pdv is not None:
+            alcanzados = [n for n in cat["niveles"] if mejor_valor >= n["meta"]]
+            if alcanzados:
+                premios_por_pdv.setdefault(mejor_pdv, {})[cl] = alcanzados[-1]["premio"]
+
+    # ===== Bloque de ganadores por categoría =====
+    st.markdown("### 🎖️ Ganadores por Categoría")
+    cols = st.columns(len(CATEGORIAS))
+    for col, cat in zip(cols, CATEGORIAS):
+        cl = cat["clave"]
+        g = ganador_por_cat[cl]
+        meta_minima = cat["niveles"][0]["meta"]
+        sin_ganador = g["pdv"] is None or g["valor"] < meta_minima
+        with col:
+            if sin_ganador:
+                st.metric(f"{cat['nombre']}", "Sin ganador", help="Nadie logró la meta mínima")
+            else:
+                nombre = pdv_disponibles.get(g["pdv"], g["pdv"])
+                premio = premios_por_pdv.get(g["pdv"], {}).get(cl, 0)
+                if cat["clave"] == "terminales":
+                    valor_str = f"${int(g['valor']):,}".replace(",", ".")
+                else:
+                    valor_str = f"{int(g['valor'])}"
+                st.metric(
+                    label=f"🏆 {cat['nombre']}",
+                    value=f"{nombre}",
+                    delta=valor_str,
+                    help=f"Premio: {_formatear_premio(premio)}" if premio else "Sin premio",
+                )
+
+    # ===== Tabla resumen general (todos los PDVs) =====
+    st.markdown("### 📊 Resumen por Punto de Venta")
+
+    filas = []
+    for pdv in pdv_disponibles:
+        nombre = pdv_disponibles[pdv]
+        ventas_pdv = avance_por_pdv.get(pdv, [])
+        av = calcular_avance(ventas_pdv)
+        premio_total = sum(premios_por_pdv.get(pdv, {}).values())
+        ganador_cats = []
+        for cat in CATEGORIAS:
+            g = ganador_por_cat[cat["clave"]]
+            if g["pdv"] == pdv and g["valor"] >= cat["niveles"][0]["meta"]:
+                ganador_cats.append(cat["nombre"])
+        filas.append({
+            "Código": pdv,
+            "PDV": nombre,
+            "Ventas": len(ventas_pdv),
+            "Pospagos": av["pospagos"],
+            "Claro Up": av["claro_up"],
+            "Accesos": av["accesos"],
+            "Terminales ($)": int(av["terminales"]),
+            "Premios ($)": premio_total,
+            "Ganador": ", ".join(ganador_cats),
+        })
+
+    df_res = pd.DataFrame(filas)
+    df_res = df_res.sort_values(
+        ["Ventas", "Pospagos", "Claro Up", "Accesos", "Terminales ($)"],
+        ascending=False,
+        ignore_index=True,
+    )
+
+    def resaltar_ganador(fila):
+        return ["background-color: #E8F5E9; font-weight: bold;" if fila["Ganador"] else "" for _ in fila]
+
+    df_estilo = (
+        df_res.style
+        .apply(resaltar_ganador, axis=1)
+        .format(
+            {"Terminales ($)": lambda x: f"${int(x):,}".replace(",", "."),
+             "Premios ($)": lambda x: f"${int(x):,}".replace(",", ".")},
+            na_rep="$0",
+        )
+    )
+    st.dataframe(df_estilo, use_container_width=True, hide_index=True)
+
+    st.caption("🏁 Los PDV que ganaron al menos un ítem se resaltan en verde. Regla: termina por ítem apenas el primer punto de venta logre la meta máxima de cada uno. Los PDVs sin registro en la campaña aparecen con 0.")

@@ -1167,6 +1167,14 @@ with tab_historial:
                             st.markdown("**Por PDV**")
                             st.dataframe(df_dinero_pdv, use_container_width=True)
 
+            # ===== VISTA ADMIN: Resultados Meta Volante =====
+            if supabase is not None:
+                try:
+                    from meta_volante import resultados_meta_volante
+                    resultados_meta_volante(supabase, pdv_disponibles)
+                except ImportError:
+                    pass
+
             # ===== VISTA ADMIN: Estado de Facturación =====
             st.subheader("🧾 Estado de Facturación del Mes")
             df_fact = cargar_facturas_csv()

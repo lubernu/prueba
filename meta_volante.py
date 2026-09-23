@@ -10,8 +10,8 @@ import streamlit as st
 NOMBRE_CAMPANA = "¡Juntos logramos más!"
 SUBTITULO_CAMPANA = "¡TU ESFUERZO TIENE PREMIO!"
 
-FECHA_INICIO = datetime.date(2026, 9, 11)
-FECHA_FIN = datetime.date(2026, 9, 17)
+FECHA_INICIO = datetime.date(2026, 9, 22)
+FECHA_FIN = datetime.date(2026, 9, 27)
 MES_CAMPANA = "Septiembre"
 
 REGLA_CIERRE = (
@@ -21,8 +21,8 @@ REGLA_CIERRE = (
 # Cada categoría: clave, nombre, unidad de medida y niveles (meta -> premio)
 CATEGORIAS = [
     {
-        "clave": "claro_up",
-        "nombre": "Claro Up",
+        "clave": "credismart",
+        "nombre": "Claro - Credismart",
         "unidad": "activaciones",
         "niveles": [
             {"meta": 5, "premio": 100000},
@@ -46,9 +46,8 @@ CATEGORIAS = [
         "niveles": [
             {"meta": 10, "premio": 100000},
             {"meta": 15, "premio": 200000},
-            {"meta": 20, "premio": 300000},
-            {"meta": 25, "premio": 400000},
-            {"meta": 30, "premio": 500000},
+            {"meta": 20, "premio": 250000},
+            {"meta": 25, "premio": 300000},
         ],
     },
     {
@@ -72,6 +71,14 @@ TIPOS_TERMINALES = [
     "Reposicion pago Inmediato",    
 ]
 
+# Nombre corto para columnas de la tabla resumen (clave -> columna)
+COLUMNAS_TABLA = {
+    "credismart": "Credismart",
+    "accesos": "Accesos",
+    "pospagos": "Pospagos",
+    "terminales": "Terminales ($)",
+}
+
 
 def consultar_ventas_pdv(cliente, pdv):
     """Consulta todas las ventas del PDV dentro del rango de la campaña.
@@ -83,7 +90,7 @@ def consultar_ventas_pdv(cliente, pdv):
             cliente.table("ventas")
             .select(
                 "punto_venta, fecha_venta, tipo_venta, valor_equipo_claro, "
-                "claro_up, acceso"
+                "financiera, acceso"
             )
             .eq("punto_venta", pdv)
             .gte("fecha_venta", FECHA_INICIO.isoformat())
@@ -110,11 +117,11 @@ def calcular_avance(ventas):
     Reglas (mismas que app.calcular_avance):
       - POSPAGOS:  ventas tipo 'Postpago' (conteo)
       - ACCESOS:   ventas 'Hogar' con acceso == 'SI'
-      - CLARO_UP:  ventas con claro_up activado
+      - CREDISMART: ventas financiadas con la entidad 'Credismart'
       - TERMINALES: suma de valor_equipo_claro de Kit/Reposicion/Tecnologia
-    Devuelve dict {claro_up, accesos, pospagos, terminales}.
+    Devuelve dict {credismart, accesos, pospagos, terminales}.
     """
-    avance = {"claro_up": 0, "accesos": 0, "pospagos": 0, "terminales": 0}
+    avance = {"credismart": 0, "accesos": 0, "pospagos": 0, "terminales": 0}
     for venta in ventas:
         tv = venta.get("tipo_venta")
         if tv == "Postpago":
@@ -127,8 +134,8 @@ def calcular_avance(ventas):
                 avance["terminales"] += float(venta.get("valor_equipo_claro") or 0)
             except (TypeError, ValueError):
                 pass
-        if venta.get("claro_up") is True or str(venta.get("claro_up")).lower() == "true":
-            avance["claro_up"] += 1
+        if str(venta.get("financiera") or "").strip().upper() == "CREDISMART":
+            avance["credismart"] += 1
     return avance
 
 
@@ -262,14 +269,14 @@ def resultados_meta_volante(cliente, pdv_disponibles):
     st.markdown("---")
     st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
     st.markdown(
-        """
+        f"""
         <div style="text-align:center; padding:20px; border:2px solid #DA291C;
                     border-radius:12px; background:linear-gradient(135deg,#FFF0EF,#FFFFFF);">
             <div style="font-size:26px; font-weight:bold; color:#DA291C;">
                 🏆 Resultados Meta Volante
             </div>
             <div style="font-size:15px; color:#666; margin-top:8px;">
-                Campaña del 11 al 17 de septiembre 2026 — cierre de resultados
+                Campaña del {FECHA_INICIO.day} al {FECHA_FIN.day} de {MES_CAMPANA} {FECHA_INICIO.year} — cierre de resultados
             </div>
         </div>
         """,
@@ -281,7 +288,7 @@ def resultados_meta_volante(cliente, pdv_disponibles):
         return
 
     respuesta = cliente.table("ventas").select(
-        "punto_venta, fecha_venta, tipo_venta, valor_equipo_claro, claro_up, acceso"
+        "punto_venta, fecha_venta, tipo_venta, valor_equipo_claro, financiera, acceso"
     ).gte("fecha_venta", FECHA_INICIO.isoformat()).lte("fecha_venta", FECHA_FIN.isoformat()).execute()
     ventas_totales = respuesta.data or []
 
@@ -351,24 +358,24 @@ def resultados_meta_volante(cliente, pdv_disponibles):
             g = ganador_por_cat[cat["clave"]]
             if g["pdv"] == pdv and g["valor"] >= cat["niveles"][0]["meta"]:
                 ganador_cats.append(cat["nombre"])
-        filas.append({
+        fila_row = {
             "Código": pdv,
             "PDV": nombre,
             "Ventas": len(ventas_pdv),
-            "Pospagos": av["pospagos"],
-            "Claro Up": av["claro_up"],
-            "Accesos": av["accesos"],
-            "Terminales ($)": int(av["terminales"]),
-            "Premios ($)": premio_total,
-            "Ganador": ", ".join(ganador_cats),
-        })
+        }
+        for cat in CATEGORIAS:
+            cl = cat["clave"]
+            if cl == "terminales":
+                fila_row["Terminales ($)"] = int(av["terminales"])
+            else:
+                fila_row[COLUMNAS_TABLA[cl]] = av[cl]
+        fila_row["Premios ($)"] = premio_total
+        fila_row["Ganador"] = ", ".join(ganador_cats)
+        filas.append(fila_row)
 
     df_res = pd.DataFrame(filas)
-    df_res = df_res.sort_values(
-        ["Ventas", "Pospagos", "Claro Up", "Accesos", "Terminales ($)"],
-        ascending=False,
-        ignore_index=True,
-    )
+    cols_orden = ["Ventas"] + [COLUMNAS_TABLA[c["clave"]] for c in CATEGORIAS]
+    df_res = df_res.sort_values(cols_orden, ascending=False, ignore_index=True)
 
     def resaltar_ganador(fila):
         return ["background-color: #E8F5E9; font-weight: bold;" if fila["Ganador"] else "" for _ in fila]

@@ -3,8 +3,8 @@
 
 Permite consultar la información de meses anteriores con un filtro de mes:
 resumen por tipo de transacción, ventas por asesor, metas del periodo, dinero
-recibido por método de pago, tendencia de los últimos meses y detalle de
-registros (con exportación a CSV).
+recibido por método de pago, tendencia de los últimos meses, detalle de
+registros (con exportación a CSV) y las ventas pendientes por facturar.
 
 Módulo independiente de app.py (patrón similar a admin_correcciones.py): recibe
 el cliente de Supabase y renderiza con Streamlit. Las reglas de cálculo del
@@ -18,6 +18,12 @@ import datetime
 
 import pandas as pd
 import streamlit as st
+
+from facturacion import (
+    cargar_facturas_csv,
+    cargar_facturas_postpago,
+    calcular_estado_facturacion,
+)
 
 ES_MESES = {
     1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
@@ -303,6 +309,39 @@ def _tendencia(ventas, meses):
         )
 
 
+def _estado_facturacion_pendiente(ventas_mes, anio, mes):
+    """Cruza las ventas del mes contra los CSV de facturación y lista solo las
+    que quedaron PENDIENTES por facturar (columna 'Facturado' == 'NO')."""
+    df_fact = cargar_facturas_csv()
+    df_post = cargar_facturas_postpago()
+
+    st.subheader("🧾 Estado de Facturación del Mes - Pendientes")
+    if df_fact is None and df_post is None:
+        st.info("📁 No se encontraron 'FacturadoParaCruce.csv' ni 'Facturado_Postpago.csv' en el proyecto.")
+        return
+
+    fecha_ref = datetime.date(anio, mes, 1)
+    df_facturacion = calcular_estado_facturacion(ventas_mes, fecha_ref, df_fact, df_post)
+    st.caption(
+        "Solo ventas sin facturar según los CSV de facturación del proyecto. "
+        "Tecnología y Hogar se excluyen (se facturan por otra plataforma)."
+    )
+
+    pendientes = df_facturacion[df_facturacion["Facturado"] == "NO"] if not df_facturacion.empty else df_facturacion
+    if pendientes.empty:
+        st.success("✅ No hay ventas pendientes por facturar en el mes seleccionado.")
+        return
+
+    st.markdown(f"**Ventas pendientes por facturar: {len(pendientes)}**")
+    st.dataframe(pendientes, use_container_width=True, hide_index=True, height=420)
+    st.download_button(
+        label="📥 Exportar Pendientes por Facturar (CSV)",
+        data=pendientes.to_csv(index=False).encode("utf-8"),
+        file_name=f"pendientes_facturar_{anio}-{mes:02d}.csv",
+        mime="text/csv",
+    )
+
+
 # ================= PESTAÑA =================
 def render_admin_meses(cliente, dict_asesores, tabla_ventas, calcular_avance_por_asesor):
     """Renderiza la pestaña de histórico mensual (solo administradores).
@@ -504,3 +543,7 @@ def render_admin_meses(cliente, dict_asesores, tabla_ventas, calcular_avance_por
         file_name=f"reporte_ventas_{anio}-{mes:02d}.csv",
         mime="text/csv",
     )
+
+    # ================= ESTADO DE FACTURACIÓN (SOLO PENDIENTES) =================
+    st.markdown("---")
+    _estado_facturacion_pendiente(ventas_mes, anio, mes)

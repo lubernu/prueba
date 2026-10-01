@@ -532,9 +532,14 @@ if supabase is None:
 # ================= ESTRUCTURA DE PESTAÑAS =================
 st.title("📋 Portal de Gestión Comercial")
 es_superusuario = st.session_state.usuario_logueado == CEDULA_SUPERUSUARIO
+es_admin = st.session_state.usuario_logueado in CEDULAS_ADMIN
 if es_superusuario:
-    tab_registro, tab_historial, tab_correcciones = st.tabs(
-        ["📝 Registrar Nueva Venta", "📜 Historial de Operaciones", "⚙️ Correcciones"]
+    tab_registro, tab_historial, tab_meses, tab_correcciones = st.tabs(
+        ["📝 Registrar Nueva Venta", "📜 Historial de Operaciones", "📅 Histórico por Mes", "⚙️ Correcciones"]
+    )
+elif es_admin:
+    tab_registro, tab_historial, tab_meses = st.tabs(
+        ["📝 Registrar Nueva Venta", "📜 Historial de Operaciones", "📅 Histórico por Mes"]
     )
 else:
     tab_registro, tab_historial = st.tabs(["📝 Registrar Nueva Venta", "📜 Historial de Operaciones"])
@@ -1010,8 +1015,6 @@ with tab_historial:
     else:
         meta_vendedor = None
 
-    es_admin = st.session_state.usuario_logueado in CEDULAS_ADMIN
-
     if meta_vendedor or es_admin:
         avance = calcular_avance(datos_historial, hoy)
 
@@ -1282,7 +1285,26 @@ with tab_historial:
             with c_desc:
                 st.caption("💡 Haga clic en los encabezados de las columnas para ordenar la tabla.")
 
-# ================= PESTAÑA 3: CORRECCIONES (solo superusuario) =================
+# ================= PESTAÑA 3: HISTÓRICO POR MES (solo administradores) =================
+if es_admin:
+    with tab_meses:
+        if supabase is None:
+            st.warning(
+                "⚠️ Supabase no configurado. No se puede consultar el histórico de meses anteriores "
+                f"sin conexión. Motivo: `{motivo_supabase}`"
+            )
+        else:
+            try:
+                from admin_meses import render_admin_meses
+            except ImportError:
+                st.error("❌ No se encontró el módulo `admin_meses.py`.")
+            else:
+                render_admin_meses(
+                    supabase, dict_asesores, TABLA_VENTAS,
+                    calcular_avance_por_asesor,
+                )
+
+# ================= PESTAÑA 4: CORRECCIONES (solo superusuario) =================
 if es_superusuario:
     with tab_correcciones:
         if supabase is None:

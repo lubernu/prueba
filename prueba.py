@@ -17,6 +17,14 @@ CEDULAS_ADMIN = list(_get_app_config("cedulas_admin", []))
 CEDULA_SUPERUSUARIO = str(_get_app_config("cedula_superusuario", "")).strip()
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
+def leer_fecha():
+    """Lee la fecha guardada en el CSV y la devuelve como datetime."""
+    with open(fechas.csv, "r", encoding="utf-8") as archivo:
+        reader = csv.reader(archivo)
+        next(reader)
+        return datetime.fromisoformat(next(reader)[0])
+
+
 def validar_campo_numerico(valor_ingresado, longitud_esperada):
     if not valor_ingresado:
         return False, ""
@@ -1179,9 +1187,10 @@ with tab_historial:
                     pass
 
             # ===== VISTA ADMIN: Estado de Facturación =====
-            st.subheader("🧾 Estado de Facturación del Mes")
+            # st.subheader("🧾 Estado de Facturación del Mes: {fecha_actualizacion}" )
             df_fact = cargar_facturas_csv()
             df_post = cargar_facturas_postpago()
+            fecha_actualizacion = leer_fecha()
             if df_fact is None and df_post is None:
                 st.info("📁 No se encontraron 'FacturadoParaCruce.csv' ni 'Facturado_Postpago.csv' en el proyecto.")
             else:

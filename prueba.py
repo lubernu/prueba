@@ -3,10 +3,8 @@ import streamlit as st
 import datetime
 import pandas as pd
 import os
-import csv
 from supabase import create_client
-from datetime import datetime, date
-from facturacion import cargar_facturas_csv, cargar_facturas_postpago, calcular_estado_facturacion
+from facturacion import cargar_facturas_csv, cargar_facturas_postpago, calcular_estado_facturacion, cargar_fecha_corte
 
 def _get_app_config(clave, valor_default):
     try:
@@ -19,15 +17,6 @@ CEDULAS_ADMIN = list(_get_app_config("cedulas_admin", []))
 CEDULA_SUPERUSUARIO = str(_get_app_config("cedula_superusuario", "")).strip()
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
-def leer_fecha():
-    if not RUTA_CSV.exists():
-        return datetime.now()
-    with open(RUTA_CSV, "r", encoding="utf-8") as archivo:
-        reader = csv.reader(archivo)
-        next(reader)
-        return datetime.fromisoformat(next(reader)[0])
-
-
 def validar_campo_numerico(valor_ingresado, longitud_esperada):
     if not valor_ingresado:
         return False, ""
@@ -1190,10 +1179,17 @@ with tab_historial:
                     pass
 
             # ===== VISTA ADMIN: Estado de Facturación =====
-            # st.subheader("🧾 Estado de Facturación del Mes: {fecha_actualizacion}" )
+            fecha_corte = cargar_fecha_corte()
+            if fecha_corte:
+                try:
+                    fecha_corte = pd.to_datetime(fecha_corte).strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    pass
+                st.subheader(f"🧾 Estado de Facturación del Mes — {fecha_corte}")
+            else:
+                st.subheader("🧾 Estado de Facturación del Mes")
             df_fact = cargar_facturas_csv()
             df_post = cargar_facturas_postpago()
-            fecha_actualizacion = leer_fecha()
             if df_fact is None and df_post is None:
                 st.info("📁 No se encontraron 'FacturadoParaCruce.csv' ni 'Facturado_Postpago.csv' en el proyecto.")
             else:

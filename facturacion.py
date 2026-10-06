@@ -59,6 +59,32 @@ def cargar_facturas_postpago(ruta_archivo=None):
     return df_post
 
 
+def cargar_fecha_corte(ruta_archivo=None):
+    """Lee la fecha de fechas.csv (columna fecha_hora) para el título del reporte.
+
+    Devuelve el valor de la última fila como texto, o None si el archivo no
+    existe o está vacío.
+    """
+    if ruta_archivo is None:
+        ruta_archivo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fechas.csv")
+    if not os.path.exists(ruta_archivo):
+        return None
+    try:
+        df_fecha = pd.read_csv(ruta_archivo, encoding="utf-8")
+    except UnicodeDecodeError:
+        df_fecha = pd.read_csv(ruta_archivo, encoding="latin-1")
+    except Exception:
+        return None
+    if df_fecha.empty or df_fecha.columns.size == 0:
+        return None
+    columna = "fecha_hora" if "fecha_hora" in df_fecha.columns else df_fecha.columns[0]
+    valores = df_fecha[columna].dropna().astype(str).str.strip()
+    valores = valores[valores != ""]
+    if valores.empty:
+        return None
+    return valores.iloc[-1]
+
+
 def calcular_estado_facturacion(datos_historial, hoy, df_fact, df_post):
     """Cruza las ventas del mes contra los CSV de facturas.
 

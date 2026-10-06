@@ -19,7 +19,7 @@ CEDULA_SUPERUSUARIO = str(_get_app_config("cedula_superusuario", "")).strip()
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def leer_fecha():
     """Lee la fecha guardada en el CSV y la devuelve como datetime."""
-    with open(fechas.csv, "r", encoding="utf-8") as archivo:
+    with open("fechas.csv", "r", encoding="utf-8") as archivo:
         reader = csv.reader(archivo)
         next(reader)
         return datetime.fromisoformat(next(reader)[0])

@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import csv
 from supabase import create_client
+from datetime import datetime
 from facturacion import cargar_facturas_csv, cargar_facturas_postpago, calcular_estado_facturacion
 
 def _get_app_config(clave, valor_default):

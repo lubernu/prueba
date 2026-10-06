@@ -5,7 +5,7 @@ import pandas as pd
 import os
 import csv
 from supabase import create_client
-from datetime import datetime
+from datetime import datetime, date
 from facturacion import cargar_facturas_csv, cargar_facturas_postpago, calcular_estado_facturacion
 
 def _get_app_config(clave, valor_default):
@@ -20,8 +20,9 @@ CEDULA_SUPERUSUARIO = str(_get_app_config("cedula_superusuario", "")).strip()
 
 # ================= CONFIGURACIÓN DE FUNCIONES AUXILIARES =================
 def leer_fecha():
-    """Lee la fecha guardada en el CSV y la devuelve como datetime."""
-    with open("fechas.csv", "r", encoding="utf-8") as archivo:
+    if not RUTA_CSV.exists():
+        return datetime.now()
+    with open(RUTA_CSV, "r", encoding="utf-8") as archivo:
         reader = csv.reader(archivo)
         next(reader)
         return datetime.fromisoformat(next(reader)[0])

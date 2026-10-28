@@ -321,17 +321,89 @@ def _armar_registro_cambios(venta, valores):
     return registro
 
 
-def render_admin_correcciones(cliente):
-    """Punto de entrada del módulo (llamado desde app.py).
-
-    Solo debería mostrarse al Superusuario; el control de acceso lo hace app.py.
-    """
-    st.subheader("⚙️ Corrección de Ventas")
-    st.caption(
-        "Busque la venta por IMEI, MIN o cédula del cliente y edítela en el "
-        "formulario. Los cambios se guardan directamente en Supabase."
+def _etiqueta_venta(venta):
+    """Texto corto con el número de línea (#id) y los datos clave de la venta."""
+    fecha = venta.get("fecha_venta")
+    fe_str = fecha.strftime("%d/%m/%Y") if isinstance(fecha, datetime.date) else str(fecha or "?")
+    return (
+        f"#{venta.get('id')} · {fe_str} · {venta.get('tipo_venta') or '?'} · "
+        f"{venta.get('nombre_cliente') or '?'} · IMEI {venta.get('imei') or '-'} · MIN {venta.get('min') or '-'}"
     )
 
+
+def _parsear_id_venta(texto):
+    """Convierte el texto digitado (ej. '#1856') en el id numérico de la venta."""
+    limpio = str(texto or "").strip().lstrip("#").strip()
+    if not limpio:
+        return None
+    try:
+        return int(limpio)
+    except ValueError:
+        return None
+
+
+def _buscar_venta_por_id(ventas, id_venta):
+    """Busca una venta por su id comparando como string (robusto ante tipos)."""
+    for venta in ventas:
+        if str(venta.get("id")) == str(id_venta):
+            return venta
+    return None
+
+
+def _render_eliminar_venta(cliente, ventas):
+    """Sección para borrar una venta por su número de línea (#id)."""
+    if st.session_state.get("corr_del_limpiar"):
+        st.session_state["corr_del_id"] = ""
+        st.session_state["corr_del_confirmar"] = False
+        del st.session_state["corr_del_limpiar"]
+
+    with st.expander("🗑️ Eliminar una venta por número de línea"):
+        st.caption(
+            "Escriba el número que aparece al inicio de cada resultado (ej. **#1856**). "
+            "La eliminación es permanente en Supabase."
+        )
+        texto_id = st.text_input(
+            "Número de línea a eliminar",
+            placeholder="Ej: #1856",
+            key="corr_del_id",
+        )
+        if not texto_id.strip():
+            return
+
+        id_venta = _parsear_id_venta(texto_id)
+        if id_venta is None:
+            st.error("❌ Escriba un número válido, por ejemplo **#1856**.")
+            return
+
+        venta = _buscar_venta_por_id(ventas, id_venta)
+        if venta is None:
+            st.warning(f"⚠️ No se encontró la venta #{id_venta}.")
+            return
+
+        st.markdown(f"**Se eliminará:** {_etiqueta_venta(venta)}")
+        confirmar = st.checkbox(
+            "Confirmo que deseo eliminar esta venta permanentemente.",
+            key="corr_del_confirmar",
+        )
+        if st.button(
+            "🗑️ Eliminar venta",
+            type="primary",
+            use_container_width=True,
+            disabled=not confirmar,
+            key="corr_del_btn",
+        ):
+            try:
+                cliente.table("ventas").delete().eq("id", venta["id"]).execute()
+                st.session_state["corr_resultados"] = None
+                st.session_state["corr_del_limpiar"] = True
+                st.session_state["corr_flash"] = f"✅ Venta #{venta['id']} eliminada."
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error al eliminar la venta: {e}")
+
+
+def _render_busqueda(ventas):
+    """Búsqueda y edición de una venta (formulario no tabular)."""
     criterio = st.radio(
         "Buscar por",
         options=["IMEI", "MIN", "Cédula del Cliente"],
@@ -343,10 +415,6 @@ def render_admin_correcciones(cliente):
         placeholder="Ej: 356938035643809 (IMEI) · 3001234567 (MIN) · 1098765432 (Cédula)",
         key="corr_termino",
     )
-
-    ventas, error = consultar_todas_ventas(cliente)
-    if error:
-        st.error(f"❌ Error al consultar las ventas: {error}")
 
     if not termino:
         st.info("📭 Escriba un valor y presione **Buscar**.")
@@ -365,16 +433,7 @@ def render_admin_correcciones(cliente):
         return
 
     st.success(f"✅ Se encontraron {len(resultados)} ventas.")
-
-    def _etiqueta(v):
-        fecha = v.get("fecha_venta")
-        fe_str = fecha.strftime("%d/%m/%Y") if isinstance(fecha, datetime.date) else str(fecha or "?")
-        return (
-            f"#{v.get('id')} · {fe_str} · {v.get('tipo_venta') or '?'} · "
-            f"{v.get('nombre_cliente') or '?'} · IMEI {v.get('imei') or '-'} · MIN {v.get('min') or '-'}"
-        )
-
-    etiquetas = [_etiqueta(v) for v in resultados]
+    etiquetas = [_etiqueta_venta(v) for v in resultados]
 
     if len(resultados) > 1:
         indice = st.selectbox(
@@ -399,8 +458,36 @@ def render_admin_correcciones(cliente):
         else:
             try:
                 cliente.table("ventas").update(registro).eq("id", venta_seleccionada["id"]).execute()
-                st.success(f"✅ Cambios guardados para la venta #{venta_seleccionada['id']}.")
                 st.session_state["corr_resultados"] = None
+                st.session_state["corr_flash"] = (
+                    f"✅ Cambios guardados para la venta #{venta_seleccionada['id']}."
+                )
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Error al guardar los cambios: {e}")
+
+
+def render_admin_correcciones(cliente):
+    """Punto de entrada del módulo (llamado desde app.py).
+
+    Solo debería mostrarse al Superusuario; el control de acceso lo hace app.py.
+    """
+    st.subheader("⚙️ Corrección de Ventas")
+    st.caption(
+        "Busque la venta por IMEI, MIN o cédula del cliente y edítela en el "
+        "formulario. Los cambios se guardan directamente en Supabase."
+    )
+
+    mensaje = st.session_state.get("corr_flash")
+    if mensaje:
+        st.success(mensaje)
+        del st.session_state["corr_flash"]
+
+    ventas, error = consultar_todas_ventas(cliente)
+    if error:
+        st.error(f"❌ Error al consultar las ventas: {error}")
+
+    _render_busqueda(ventas)
+
+    st.markdown("---")
+    _render_eliminar_venta(cliente, ventas)

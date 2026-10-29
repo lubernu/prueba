@@ -3,11 +3,27 @@ import datetime
 import pandas as pd
 
 
+PREFIJO_ICCID = "57101"
+
+
 def normalizar(valor):
     """Normaliza cédulas/IMEIs para comparación (quita espacios y '.0' de floats)."""
     s = str(valor or "").strip().upper()
     if s.endswith(".0"):
         s = s[:-2]
+    return s
+
+
+def normalizar_iccid(valor):
+    """Normaliza un ICCID de Sim card para el cruce de facturación.
+
+    Las SIM se facturan con el prefijo '57101' (17 dígitos). Algunos vendedores
+    registran solo los 12 dígitos finales; en ese caso se anexa el prefijo para
+    que el cruce coincida. Valores con otra longitud se dejan como están.
+    """
+    s = normalizar(valor)
+    if len(s) == 12:
+        return PREFIJO_ICCID + s
     return s
 
 
@@ -157,7 +173,9 @@ def calcular_estado_facturacion_simcard(datos_historial, hoy, df_fact):
 
     El estado de facturación se determina cruzando el ICCID de la venta contra
     la columna imei de las filas tipo AMIGO SIM de FacturadoParaCruce.csv (que
-    almacena ICCIDs). Si no hay CSV cargado, la columna Facturado queda vacía.
+    almacena ICCIDs). Los ICCID de 12 dígitos se completan con el prefijo
+    '57101' antes del cruce. Si no hay CSV cargado, la columna Facturado queda
+    vacía.
 
     Devuelve un DataFrame con columnas:
       Cédula Vendedor, Vendedor, Tipo, Fecha, Cliente, Cédula Cliente,
@@ -165,7 +183,7 @@ def calcular_estado_facturacion_simcard(datos_historial, hoy, df_fact):
     """
     hay_facturas = df_fact is not None and not df_fact.empty
     df_sim = df_fact[df_fact["tipo_norm"] == "AMIGO SIM"] if hay_facturas else pd.DataFrame()
-    set_iccids_fact = set(df_sim["imei_norm"]) if not df_sim.empty else set()
+    set_iccids_fact = set(df_sim["imei_norm"].map(normalizar_iccid)) if not df_sim.empty else set()
 
     ventas_mes = [
         v for v in datos_historial
@@ -177,7 +195,7 @@ def calcular_estado_facturacion_simcard(datos_historial, hoy, df_fact):
 
     filas = []
     for v in ventas_mes:
-        iccid_v = normalizar(v.get("iccid"))
+        iccid_v = normalizar_iccid(v.get("iccid"))
         if not hay_facturas:
             facturado = ""
             grupo_fact = ""

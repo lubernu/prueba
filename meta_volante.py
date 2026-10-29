@@ -7,8 +7,8 @@ import streamlit as st
 # campaña se elimina (detengase con app.py). La configuración está hardcodeada
 # aquí para que borrar el archivo elimine todo el tracking.
 #
-# Campaña vigente: puntos acumulados por asesor, del 26 al 31 de octubre de 2026.
-# El premio es el del nivel más alto alcanzado (no acumulativo).
+# Campaña vigente: puntos acumulados por punto de venta, del 26 al 31 de
+# octubre de 2026. El premio es el del nivel más alto alcanzado (no acumulativo).
 
 NOMBRE_CAMPANA = "Meta Volante de Puntos"
 SUBTITULO_CAMPANA = "¡SUMA PUNTOS Y GANA!"
@@ -64,8 +64,8 @@ DESGLOSE_COLUMNAS = {
 }
 
 
-def consultar_ventas_asesor(cliente, cedula):
-    """Consulta todas las ventas del asesor dentro del rango de la campaña.
+def consultar_ventas_pdv(cliente, pdv):
+    """Consulta todas las ventas del PDV dentro del rango de la campaña.
 
     Si viene fuera de rango o sin conexión, devuelve lista vacía.
     """
@@ -73,10 +73,10 @@ def consultar_ventas_asesor(cliente, cedula):
         respuesta = (
             cliente.table("ventas")
             .select(
-                "cedula_vendedor, nombre_vendedor, fecha_venta, tipo_venta, "
+                "punto_venta, fecha_venta, tipo_venta, "
                 "valor_equipo_claro, acceso"
             )
-            .eq("cedula_vendedor", str(cedula))
+            .eq("punto_venta", pdv)
             .gte("fecha_venta", FECHA_INICIO.isoformat())
             .lte("fecha_venta", FECHA_FIN.isoformat())
             .execute()
@@ -203,8 +203,8 @@ def _tabla_niveles(puntos):
     )
 
 
-def render_meta_volante(cliente, cedula, nombre_asesor):
-    """Muestra el tracking de la Meta Volante para el asesor logueado.
+def render_meta_volante(cliente, pdv, nombre_pdv):
+    """Muestra el tracking de la Meta Volante para el PDV seleccionado.
 
     Llamada desde app.py tras elegir PDV (pantalla intermedia). Si hoy está
     fuera del rango de la campaña, muestra un aviso y no renderiza.
@@ -221,14 +221,14 @@ def render_meta_volante(cliente, cedula, nombre_asesor):
     st.markdown(
         f"""
         <div class="nombre-vendedor" style="margin-top:18px;">
-            👤 Asesor: {nombre_asesor} ({cedula})
+            📍 Punto de Venta: {nombre_pdv} ({pdv})
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    ventas_asesor = consultar_ventas_asesor(cliente, cedula)
-    desglose = calcular_puntos(ventas_asesor)
+    ventas_pdv = consultar_ventas_pdv(cliente, pdv)
+    desglose = calcular_puntos(ventas_pdv)
     puntos = desglose["puntos"]
 
     st.markdown("---")
@@ -251,7 +251,7 @@ def render_meta_volante(cliente, cedula, nombre_asesor):
     if cercano is not None:
         faltan = cercano["puntos"] - puntos
         st.caption(
-            f"Te faltan **{faltan} puntos** para alcanzar "
+            f"Faltan **{faltan} puntos** para alcanzar "
             f"**{formatear_premio(cercano['premio'])}** ({cercano['puntos']} puntos)."
         )
     else:
@@ -278,15 +278,15 @@ def render_meta_volante(cliente, cedula, nombre_asesor):
     _tabla_niveles(puntos)
 
     st.markdown("---")
-    st.caption(f"Ventas registradas por el asesor durante la campaña: **{len(ventas_asesor)}**")
+    st.caption(f"Ventas registradas en el PDV durante la campaña: **{len(ventas_pdv)}**")
 
 
-def resultados_meta_volante(cliente, asesores):
+def resultados_meta_volante(cliente, pdv_disponibles):
     """Muestra los resultados finales de la campaña para los administradores.
 
-    Tabla con TODOS los asesores (los que no registraron ventas en la campaña
-    aparecen con 0 puntos) y bloque de ganadores. Solo se muestra cuando la
-    campaña ya terminó (hoy > FECHA_FIN).
+    Tabla con TODOS los puntos de venta (los que no registraron ventas en la
+    campaña aparecen con 0 puntos) y bloque de ganadores. Solo se muestra cuando
+    la campaña ya terminó (hoy > FECHA_FIN).
     """
     hoy = datetime.date.today()
 
@@ -312,37 +312,32 @@ def resultados_meta_volante(cliente, asesores):
         return
 
     respuesta = cliente.table("ventas").select(
-        "cedula_vendedor, nombre_vendedor, fecha_venta, tipo_venta, "
-        "valor_equipo_claro, acceso"
+        "punto_venta, fecha_venta, tipo_venta, valor_equipo_claro, acceso"
     ).gte("fecha_venta", FECHA_INICIO.isoformat()).lte("fecha_venta", FECHA_FIN.isoformat()).execute()
     ventas_totales = respuesta.data or []
 
-    ventas_por_asesor = {}
+    ventas_por_pdv = {}
     for v in ventas_totales:
-        cedula = str(v.get("cedula_vendedor") or "").strip()
-        if not cedula:
+        pdv = v.get("punto_venta")
+        if not pdv:
             continue
-        ventas_por_asesor.setdefault(cedula, []).append(v)
+        ventas_por_pdv.setdefault(pdv, []).append(v)
 
-    # Asegurar que aparezcan todos los asesores registrados, aunque no vendan.
-    for cedula in asesores:
-        ventas_por_asesor.setdefault(str(cedula).strip(), [])
+    # Asegurar que aparezcan todos los PDV registrados, aunque no vendan.
+    for pdv in pdv_disponibles:
+        ventas_por_pdv.setdefault(pdv, [])
 
     minimo = NIVELES[-1]["puntos"]
 
     filas = []
-    for cedula, ventas_asesor in ventas_por_asesor.items():
-        desglose = calcular_puntos(ventas_asesor)
+    for pdv, ventas_pdv in ventas_por_pdv.items():
+        desglose = calcular_puntos(ventas_pdv)
         puntos = desglose["puntos"]
         nivel = nivel_alcanzado(puntos)
-        nombre = asesores.get(cedula)
-        if not nombre:
-            nombres_venta = [v.get("nombre_vendedor") for v in ventas_asesor if v.get("nombre_vendedor")]
-            nombre = nombres_venta[0] if nombres_venta else "Sin nombre"
         fila = {
-            "CC": cedula,
-            "Asesor": nombre,
-            "Ventas": len(ventas_asesor),
+            "Código": pdv,
+            "PDV": pdv_disponibles.get(pdv, pdv),
+            "Ventas": len(ventas_pdv),
         }
         for clave, etiqueta in DESGLOSE_COLUMNAS.items():
             fila[etiqueta] = desglose[clave]
@@ -352,7 +347,7 @@ def resultados_meta_volante(cliente, asesores):
         filas.append(fila)
 
     if not filas:
-        st.info("No hay asesores ni ventas registradas para esta campaña.")
+        st.info("No hay puntos de venta ni ventas registradas para esta campaña.")
         return
 
     df_res = pd.DataFrame(filas)
@@ -362,20 +357,20 @@ def resultados_meta_volante(cliente, asesores):
     ganadores = df_res[df_res["Puntos"] >= minimo] if not df_res.empty else df_res
     st.markdown("### 🎖️ Ganadores")
     if ganadores.empty:
-        st.info(f"Ningún asesor alcanzó el mínimo de {minimo} puntos.")
+        st.info(f"Ningún punto de venta alcanzó el mínimo de {minimo} puntos.")
     else:
         cols = st.columns(min(len(ganadores), 3))
         for col, (_, fila) in zip(cols, ganadores.head(3).iterrows()):
             with col:
                 st.metric(
-                    label=f"🏆 {fila['Asesor']}",
+                    label=f"🏆 {fila['PDV']}",
                     value=f"{int(fila['Puntos'])} puntos",
                     delta=fila["Premio"],
-                    help=f"CC: {fila['CC']}",
+                    help=f"Código: {fila['Código']}",
                 )
 
-    # ===== Tabla resumen general (todos los asesores) =====
-    st.markdown("### 📊 Resumen por Asesor")
+    # ===== Tabla resumen general (todos los PDV) =====
+    st.markdown("### 📊 Resumen por Punto de Venta")
 
     def resaltar_ganador(fila):
         return ["background-color: #E8F5E9; font-weight: bold;" if fila["Ganador"] == "Sí" else "" for _ in fila]
@@ -384,7 +379,7 @@ def resultados_meta_volante(cliente, asesores):
     st.dataframe(df_estilo, use_container_width=True, hide_index=True)
 
     st.caption(
-        f"🏁 Se resaltan en verde los asesores que alcanzaron al menos {minimo} puntos. "
+        f"🏁 Se resaltan en verde los PDV que alcanzaron al menos {minimo} puntos. "
         "El premio corresponde al nivel más alto alcanzado (no acumulativo). "
-        "Los asesores sin registro en la campaña aparecen con 0 puntos."
+        "Los PDV sin registro en la campaña aparecen con 0 puntos."
     )

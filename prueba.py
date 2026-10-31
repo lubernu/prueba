@@ -401,7 +401,7 @@ pdv_disponibles = {
     "QUIP":"QUIPAMA",
     "RAQU":"RAQUIRA",
     "SAMA":"SAMACA",
-    "SANT": "SANTANA",
+    "SANT":"SANTANA",
     "SOGA":"SOGAMOSO",
     "STAS":"SANTA SOFIA",
     "TIBA":"TIBANA",
@@ -1202,10 +1202,11 @@ with tab_historial:
                             st.markdown("**Por PDV**")
                             st.dataframe(df_dinero_pdv, use_container_width=True)
 
-            # ===== VISTA ADMIN: Resultados Meta Volante =====
+            # ===== VISTA ADMIN: Meta Volante (progreso y resultados) =====
             if supabase is not None:
                 try:
-                    from meta_volante import resultados_meta_volante
+                    from meta_volante import resumen_meta_volante, resultados_meta_volante
+                    resumen_meta_volante(supabase, pdv_disponibles)
                     resultados_meta_volante(supabase, pdv_disponibles)
                 except ImportError:
                     pass

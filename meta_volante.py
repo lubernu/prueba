@@ -281,6 +281,130 @@ def render_meta_volante(cliente, pdv, nombre_pdv):
     st.caption(f"Ventas registradas en el PDV durante la campaña: **{len(ventas_pdv)}**")
 
 
+def resumen_meta_volante(cliente, pdv_disponibles):
+    """Muestra cómo va la campaña: puntos por PDV y por producto (solo admin).
+
+    Funciona durante y después de la campaña. Incluye una fila de totales y
+    descarga en CSV.
+    """
+    hoy = datetime.date.today()
+
+    st.markdown("---")
+    st.markdown("### 🏁 Meta Volante — Puntos por PDV y Producto")
+    st.caption(
+        f"Campaña del {FECHA_INICIO.day} al {FECHA_FIN.day} de {MES_CAMPANA} "
+        f"{FECHA_INICIO.year}. {REGLA_CIERRE}"
+    )
+
+    if hoy < FECHA_INICIO:
+        st.info("📅 La campaña aún no ha comenzado.")
+        return
+    if hoy <= FECHA_FIN:
+        st.info("🟢 Campaña en curso.")
+    else:
+        st.info("⚫ Campaña finalizada.")
+
+    try:
+        respuesta = (
+            cliente.table("ventas")
+            .select("punto_venta, fecha_venta, tipo_venta, valor_equipo_claro, acceso")
+            .gte("fecha_venta", FECHA_INICIO.isoformat())
+            .lte("fecha_venta", FECHA_FIN.isoformat())
+            .execute()
+        )
+    except Exception as e:
+        st.warning(f"No se pudieron consultar las ventas de la campaña: {e}")
+        return
+
+    ventas_totales = respuesta.data or []
+
+    ventas_por_pdv = {}
+    for v in ventas_totales:
+        pdv = v.get("punto_venta")
+        if not pdv:
+            continue
+        ventas_por_pdv.setdefault(pdv, []).append(v)
+
+    todos_los_pdv = dict(pdv_disponibles)
+    for pdv in ventas_por_pdv:
+        todos_los_pdv.setdefault(pdv, pdv)
+
+    minimo = NIVELES[-1]["puntos"]
+
+    filas = []
+    totales = {clave: 0 for clave in DESGLOSE_COLUMNAS}
+    total_puntos = 0
+    total_ventas = 0
+    pdv_participantes = 0
+    for pdv, nombre in todos_los_pdv.items():
+        ventas_pdv = ventas_por_pdv.get(pdv, [])
+        desglose = calcular_puntos(ventas_pdv)
+        nivel = nivel_alcanzado(desglose["puntos"])
+        fila = {"Código": pdv, "PDV": nombre}
+        for clave, etiqueta in DESGLOSE_COLUMNAS.items():
+            fila[etiqueta] = desglose[clave]
+            totales[clave] += desglose[clave]
+        fila["Ventas"] = len(ventas_pdv)
+        fila["Puntos"] = desglose["puntos"]
+        fila["Premio"] = formatear_premio(nivel["premio"]) if nivel else "Sin premio"
+        total_puntos += desglose["puntos"]
+        total_ventas += len(ventas_pdv)
+        if desglose["puntos"] > 0:
+            pdv_participantes += 1
+        filas.append(fila)
+
+    if not filas:
+        st.info("No hay puntos de venta registrados.")
+        return
+
+    df_res = pd.DataFrame(filas)
+    df_res = df_res.sort_values(["Puntos", "Ventas"], ascending=False, ignore_index=True)
+
+    fila_total = {"Código": "TOTAL", "PDV": "TOTAL"}
+    for clave, etiqueta in DESGLOSE_COLUMNAS.items():
+        fila_total[etiqueta] = totales[clave]
+    fila_total["Ventas"] = total_ventas
+    fila_total["Puntos"] = total_puntos
+    fila_total["Premio"] = ""
+
+    df_res = pd.concat([df_res, pd.DataFrame([fila_total])], ignore_index=True)
+
+    cols_puntos, cols_premio, cols_pdv = st.columns(3)
+    with cols_puntos:
+        st.metric("Puntos acumulados", f"{total_puntos}")
+    with cols_premio:
+        st.metric("PDV con puntos", f"{pdv_participantes}")
+    with cols_pdv:
+        st.metric("Mínimo para premio", f"{minimo} puntos")
+
+    def resaltar(fila):
+        if fila["PDV"] == "TOTAL":
+            return ["background-color: #F5F5F5; font-weight: bold;" for _ in fila]
+        if fila["Puntos"] >= minimo:
+            return ["background-color: #E8F5E9;" for _ in fila]
+        return ["" for _ in fila]
+
+    st.dataframe(
+        df_res.style.apply(resaltar, axis=1),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    csv_resumen = df_res.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Exportar resumen Meta Volante (CSV)",
+        data=csv_resumen,
+        file_name=f"meta_volante_{FECHA_INICIO.isoformat()}_{FECHA_FIN.isoformat()}.csv",
+        mime="text/csv",
+    )
+
+    st.caption(
+        "Puntos: equipo < $1.501.000 = 1 · equipo ≥ $1.501.000 = 2 · "
+        "DTH = 2 · Pospago = 2 · Acceso = 3. "
+        f"Se resaltan los PDV con al menos {minimo} puntos."
+    )
+
+
 def resultados_meta_volante(cliente, pdv_disponibles):
     """Muestra los resultados finales de la campaña para los administradores.
 
@@ -289,6 +413,10 @@ def resultados_meta_volante(cliente, pdv_disponibles):
     la campaña ya terminó (hoy > FECHA_FIN).
     """
     hoy = datetime.date.today()
+
+    if hoy <= FECHA_FIN:
+        st.info("📅 La campaña aún no ha terminado. Los resultados finales se publicarán al cierre.")
+        return
 
     st.markdown("---")
     st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
@@ -306,10 +434,6 @@ def resultados_meta_volante(cliente, pdv_disponibles):
         """,
         unsafe_allow_html=True,
     )
-
-    if hoy <= FECHA_FIN:
-        st.info("📅 La campaña aún no ha terminado. Los resultados se publicarán al cierre.")
-        return
 
     respuesta = cliente.table("ventas").select(
         "punto_venta, fecha_venta, tipo_venta, valor_equipo_claro, acceso"

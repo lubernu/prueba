@@ -7,14 +7,14 @@ import streamlit as st
 # campaña se elimina (detengase con app.py). La configuración está hardcodeada
 # aquí para que borrar el archivo elimine todo el tracking.
 #
-# Campaña vigente: puntos acumulados por punto de venta, del 26 al 31 de
-# octubre de 2026. El premio es el del nivel más alto alcanzado (no acumulativo).
+# Campaña vigente: puntos acumulados por punto de venta, del 4 al 10 de
+# noviembre de 2026. El premio es el del nivel más alto alcanzado (no acumulativo).
 
-NOMBRE_CAMPANA = "Meta Volante de Puntos"
-SUBTITULO_CAMPANA = "¡SUMA PUNTOS Y GANA!"
-FECHA_INICIO = datetime.date(2026, 10, 26)
-FECHA_FIN = datetime.date(2026, 10, 31)
-MES_CAMPANA = "Octubre"
+NOMBRE_CAMPANA = "¡Iniciamos Temporada con TODA!"
+SUBTITULO_CAMPANA = "¡Tu esfuerzo tiene premio!"
+FECHA_INICIO = datetime.date(2026, 11, 4)
+FECHA_FIN = datetime.date(2026, 11, 10)
+MES_CAMPANA = "Noviembre"
 
 REGLA_CIERRE = (
     "El premio corresponde al nivel más alto alcanzado según los puntos acumulados "
@@ -24,15 +24,15 @@ REGLA_CIERRE = (
 # Escala de premios por puntos (de mayor a menor). El premio puede ser un monto
 # en pesos (int) o el nombre de un producto (str).
 NIVELES = [
-    {"puntos": 100, "premio": 1000000},
-    {"puntos": 90, "premio": 900000},
-    {"puntos": 80, "premio": 800000},
-    {"puntos": 70, "premio": 700000},
-    {"puntos": 60, "premio": 500000},
-    {"puntos": 50, "premio": "Smartwatch Jincase"},
-    {"puntos": 45, "premio": "Smartwatch Honor"},
-    {"puntos": 40, "premio": "Audífonos Jincase"},
-    {"puntos": 30, "premio": "Tarjeta Adidas"},
+    {"puntos": 120, "premio": 1000000},
+    {"puntos": 110, "premio": 900000},
+    {"puntos": 100, "premio": 800000},
+    {"puntos": 90, "premio": 700000},
+    {"puntos": 80, "premio": 500000},
+    {"puntos": 70, "premio": "Smartwatch Jincase"},
+    {"puntos": 60, "premio": "Smartwatch Honor"},
+    {"puntos": 50, "premio": "Audífonos Jincase"},
+    {"puntos": 40, "premio": "Tarjeta Adidas"},
 ]
 
 # Reglas de puntos por tipo de venta.
@@ -244,7 +244,7 @@ def render_meta_volante(cliente, pdv, nombre_pdv):
             minimo = NIVELES[-1]["puntos"]
             st.metric("PREMIO ACTUAL", "Sin premio", help=f"Necesitas al menos {minimo} puntos")
 
-    progreso = min(puntos / 100, 1.0)
+    progreso = min(puntos / NIVELES[0]["puntos"], 1.0)
     st.progress(progreso)
 
     cercano = siguiente_nivel(puntos)

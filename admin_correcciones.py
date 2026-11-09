@@ -402,7 +402,7 @@ def _render_eliminar_venta(cliente, ventas):
                 st.error(f"❌ Error al eliminar la venta: {e}")
 
 
-def _render_busqueda(ventas):
+def _render_busqueda(cliente, ventas):
     """Búsqueda y edición de una venta (formulario no tabular)."""
     criterio = st.radio(
         "Buscar por",
@@ -467,10 +467,12 @@ def _render_busqueda(ventas):
                 st.error(f"❌ Error al guardar los cambios: {e}")
 
 
-def render_admin_correcciones(cliente):
+def render_admin_correcciones(cliente, ventas=None):
     """Punto de entrada del módulo (llamado desde app.py).
 
     Solo debería mostrarse al Superusuario; el control de acceso lo hace app.py.
+    `ventas` permite pasar una lista ya cargada (ej. la app local paginada);
+    si es None se consulta la tabla como antes.
     """
     st.subheader("⚙️ Corrección de Ventas")
     st.caption(
@@ -483,11 +485,12 @@ def render_admin_correcciones(cliente):
         st.success(mensaje)
         del st.session_state["corr_flash"]
 
-    ventas, error = consultar_todas_ventas(cliente)
-    if error:
-        st.error(f"❌ Error al consultar las ventas: {error}")
+    if ventas is None:
+        ventas, error = consultar_todas_ventas(cliente)
+        if error:
+            st.error(f"❌ Error al consultar las ventas: {error}")
 
-    _render_busqueda(ventas)
+    _render_busqueda(cliente, ventas)
 
     st.markdown("---")
     _render_eliminar_venta(cliente, ventas)
